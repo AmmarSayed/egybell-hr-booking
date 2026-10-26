@@ -1,0 +1,5 @@
+name = "egybell-hr-booking"
+main = "worker.js"
+compatibility_date = "2026-10-21"
+account_id = "3d556ff8a55dcb33de906f9866ba99f0"
+workers_dev = true
