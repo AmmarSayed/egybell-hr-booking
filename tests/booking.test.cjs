@@ -12,3 +12,15 @@ test('phone is required, validated, stored as text and not returned in availabil
 test('HTTP bridge accepts only booking operations and does not write on availability',()=>{const a=app();a.ctx.ContentService={MimeType:{JSON:'json'},createTextOutput:text=>({setMimeType:()=>JSON.parse(text)})};assert.match(a.ctx.doPost({postData:{contents:'{"action":"delete"}'}}).error,/Invalid/);const data=a.ctx.doPost({postData:{contents:JSON.stringify({action:'availability',email:'a@afreximbank.com'})}});assert.equal(data.slots.length,2);assert.equal(a.tables.Bookings.length,1)});
 test('new booking references are eight uppercase characters',()=>{const a=app();const r=a.ctx.book('S1','a@afreximbank.com','+201001234567');assert.match(r.id,/^[A-Z0-9]{8}$/)});
 test('reference collisions with cancelled bookings are retried',()=>{const a=app();a.tables.Bookings.push(['ABCDEF12','old@afreximbank.com','','','OLD','Cancelled']);const ids=['abcdef12-0000-0000-0000-000000000000','12345678-0000-0000-0000-000000000000'];a.ctx.Utilities.getUuid=()=>ids.shift();assert.equal(a.ctx.book('S1','a@afreximbank.com','+201001234567').id,'12345678')});
+test('public schedule follows active slots and rooms without reading bookings',()=>{
+ const a=app();
+ delete a.tables.Bookings;
+ a.ctx.ContentService={MimeType:{JSON:'json'},createTextOutput:text=>({setMimeType:()=>JSON.parse(text)})};
+ const schedule=()=>a.ctx.doPost({postData:{contents:'{"action":"schedule"}'}});
+ assert.deepEqual(schedule(),{dates:['2026-11-01','2026-11-02']});
+ a.tables.Available_Slots[1][1]='2026-11-30';
+ a.tables.Available_Slots[2][1]='2026-11-30';
+ assert.deepEqual(schedule(),{dates:['2026-11-30']});
+ a.tables.Rooms[1][2]=false;
+ assert.deepEqual(schedule(),{dates:[]});
+});
