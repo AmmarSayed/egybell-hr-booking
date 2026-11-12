@@ -15,6 +15,10 @@ function slots_(){
   return {id:String(r[0]),date,time,room:String(rooms.find(room=>room[0]===r[4])[1])};
  });
 }
+function getSchedule(){
+ const dates=[...new Set(slots_().map(slot=>slot.date))].sort();
+ return {dates};
+}
 function bookings_(){const rows=rows_('Bookings');const expected=['Booking_ID','Employee_Email','User_Name','Department','Slot_ID','Booking_Status','HR_Notes','Created_At','Created_By'];if(JSON.stringify(rows[0].slice(0,9))!==JSON.stringify(expected))throw new Error('Unexpected Bookings columns. Contact the organizer.');return rows.slice(1).filter(r=>r[0]&&String(r[5]).toLowerCase()!=='cancelled');}
 function booking_(r){const s=rows_('Available_Slots').slice(1).find(s=>s[0]===r[4]);const slot=slots_().find(s=>s.id===r[4]);return {id:String(r[0]),slot:String(r[4]),details:slot||{date:s?String(s[1]):'Date unavailable',time:s?String(s[2]).slice(0,5):'',room:s?String(s[4]):'Room unavailable'}};}
 function getAvailability(rawEmail){return locked_(()=>{const email=email_(rawEmail),rows=bookings_(),taken=new Set(rows.map(r=>r[4])),own=rows.find(r=>String(r[1]).toLowerCase()===email);return {email,slots:slots_().map(s=>Object.assign(s,{available:!taken.has(s.id)})),hasBooking:!!own};});}
@@ -35,7 +39,8 @@ function doPost(e){
   const text=e&&e.postData&&e.postData.contents||'';
   if(text.length>2048)throw new Error('Invalid request.');
   const data=JSON.parse(text);
-  if(data.action==='availability')result=getAvailability(data.email);
+  if(data.action==='schedule')result=getSchedule();
+  else if(data.action==='availability')result=getAvailability(data.email);
   else if(data.action==='book')result=book(data.slotId,data.email,data.phone);
   else throw new Error('Invalid request.');
  }catch(error){result={error:error.message||'Unable to process the request.'};}
