@@ -61,8 +61,8 @@ test('Clerk booking verifies the session and uses the verified work email', asyn
   const {email, slots} = await availability.json();
   assert.equal(email, 'employee@afreximbank.com');
   const slotId = slots[0].id;
-  assert.equal((await api('book', null, {email, slotId, phone: '+201000000001'})).status, 401);
-  const booking = await api('book', 'employee', {email: 'different@afreximbank.com', slotId, phone: '+201000000001'});
+  assert.equal((await api('book', null, {email, slotId, name: 'Mona Hassan', phone: '+201000000001'})).status, 401);
+  const booking = await api('book', 'employee', {email: 'different@afreximbank.com', slotId, name: 'Mona Hassan', phone: '+201000000001'});
   assert.equal(booking.status, 200);
   const existing = await (await api('availability', 'employee')).json();
   assert.equal(existing.hasBooking, true);
@@ -71,6 +71,7 @@ test('Clerk booking verifies the session and uses the verified work email', asyn
   assert.equal(existing.booking.details.room, slots[0].room);
   assert.equal(existing.booking.phone, undefined);
   assert.equal(existing.booking.canCancel, true);
+  assert.equal(existing.booking.name, 'Mona Hassan');
 
   // Cancelling more than 24 hours ahead frees the slot so the employee can choose again.
   assert.equal((await api('cancel', null)).status, 401);
@@ -80,7 +81,7 @@ test('Clerk booking verifies the session and uses the verified work email', asyn
   const afterCancel = await (await api('availability', 'employee')).json();
   assert.equal(afterCancel.hasBooking, false);
   assert.equal(afterCancel.slots.find(slot => slot.id === slotId).available, true);
-  assert.equal((await api('book', 'employee', {slotId, phone: '+201000000001'})).status, 200);
+  assert.equal((await api('book', 'employee', {slotId, name: 'Mona Hassan', phone: '+201000000001'})).status, 200);
 
   // slots[0] is 24 Nov 09:00 Cairo (07:00 UTC). From 23 Nov 08:00 UTC it is 23 hours away.
   assert.equal(slots[0].date + ' ' + slots[0].time, '2026-11-24 09:00');

@@ -6,6 +6,7 @@ import test from 'node:test';
 import {once} from 'node:events';
 import {createBookingApp} from '../server/app.mjs';
 import {openStore} from '../server/store.mjs';
+import {DatabaseSync} from 'node:sqlite';
 
 test('booking and HR management share a durable database', async t => {
   const dir = await mkdtemp(join(tmpdir(), 'egybell-test-'));
@@ -50,7 +51,10 @@ test('booking and HR management share a durable database', async t => {
   const before = await (await publicApi({action: 'availability', email})).json();
   assert.equal(before.booking, undefined);
   const slotId = slots[0].id;
-  const booking = {action: 'book', email, phone: '+201000000001', slotId};
+  const booking = {action: 'book', email, name: 'Mona Hassan', phone: '+201000000001', slotId};
+  for (const name of ['', 'M', '<script>', '12345', 'x'.repeat(101)]) {
+    assert.equal((await publicApi({...booking, name})).status, 400, 'name ' + JSON.stringify(name));
+  }
   const concurrent = await Promise.all([publicApi(booking), publicApi({...booking, email: 'another@afreximbank.com'})]);
   assert.deepEqual(concurrent.map(r => r.status).sort(), [200, 409]);
   const winner = (await (await publicApi({action: 'availability', email})).json()).hasBooking ? email : 'another@afreximbank.com';
@@ -73,6 +77,7 @@ test('booking and HR management share a durable database', async t => {
   assert.ok(csv.includes(winner));
   assert.ok(csv.includes(receipt.id));
   assert.ok(csv.includes("'+201000000001"));
+  assert.ok(csv.includes('"Full name"') && csv.includes('"Mona Hassan"'));
   const filtered = await (await request('/api/admin/report.csv?from=2026-11-25', undefined, cookie)).text();
   assert.ok(!filtered.includes(receipt.id));
 
@@ -101,7 +106,7 @@ test('booking and HR management share a durable database', async t => {
   const afterDelete = await (await publicApi({action: 'availability', email: winner})).json();
   assert.equal(afterDelete.hasBooking, false);
   const openSlot = afterDelete.slots.find(slot => slot.available);
-  const rebooked = await publicApi({action: 'book', email: winner, phone: '+201000000001', slotId: openSlot.id});
+  const rebooked = await publicApi({action: 'book', email: winner, name: 'Mona Hassan', phone: '+201000000001', slotId: openSlot.id});
   assert.equal(rebooked.status, 200);
   assert.deepEqual((await (await publicApi({action: 'schedule'})).json()).dates, ['2026-11-24', '2026-11-25', '2026-11-26']);
 });
@@ -114,8 +119,34 @@ test('appointments must be booked at least 24 hours ahead in Cairo time', () => 
     const at = time => slots.find(slot => slot.date === '2026-11-24' && slot.room === 'Meeting Room 9' && slot.time === time);
     assert.equal(at('09:45').available, false);
     assert.equal(at('10:00').available, true);
-    assert.throws(() => store.book({email: 'employee@afreximbank.com', phone: '+201000000001', slotId: at('09:45').id}), /24 hours in advance/);
-    assert.equal(store.book({email: 'employee@afreximbank.com', phone: '+201000000001', slotId: at('10:00').id}).canCancel, true);
+    assert.throws(() => store.book({email: 'employee@afreximbank.com', name: 'Mona Hassan', phone: '+201000000001', slotId: at('09:45').id}), /24 hours in advance/);
+    assert.equal(store.book({email: 'employee@afreximbank.com', name: 'Mona Hassan', phone: '+201000000001', slotId: at('10:00').id}).canCancel, true);
+  } finally {
+    store.close();
+  }
+});
+
+test('bookings made before names were collected survive the upgrade', async t => {
+  const dir = await mkdtemp(join(tmpdir(), 'egybell-migrate-'));
+  t.after(() => rm(dir, {recursive: true, force: true}));
+  const databasePath = join(dir, 'bookings.sqlite');
+  const old = new DatabaseSync(databasePath);
+  old.exec(`
+    CREATE TABLE slots (id TEXT PRIMARY KEY, date TEXT NOT NULL, room TEXT NOT NULL, time TEXT NOT NULL, active INTEGER NOT NULL CHECK(active IN (0, 1))) STRICT;
+    CREATE TABLE bookings (reference TEXT PRIMARY KEY, slot_id TEXT NOT NULL UNIQUE REFERENCES slots(id),
+      email TEXT NOT NULL UNIQUE, phone TEXT NOT NULL, room TEXT NOT NULL, created_at TEXT NOT NULL) STRICT;
+    INSERT INTO slots VALUES ('${'a'.repeat(64)}', '2026-11-24', 'Room 1', '09:00', 1);
+    INSERT INTO bookings VALUES ('AB12CD34', '${'a'.repeat(64)}', 'old@afreximbank.com', '+201000000001', 'Room 1', '2026-11-01T00:00:00Z');
+  `);
+  old.close();
+  const store = openStore(databasePath, {now: () => Date.parse('2026-11-01T00:00:00Z')});
+  try {
+    const [row] = store.bookings();
+    assert.equal(row.reference, 'AB12CD34');
+    assert.equal(row.name, '');
+    const {slots} = store.availability('new@afreximbank.com');
+    const open = slots.find(slot => slot.available);
+    assert.equal(store.book({email: 'new@afreximbank.com', name: '  مني   أحمد ', phone: '+201000000002', slotId: open.id}).name, 'مني أحمد');
   } finally {
     store.close();
   }

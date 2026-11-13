@@ -6,7 +6,7 @@ import {isDate, openStore, RequestError} from './store.mjs';
 const sessionSeconds = 8 * 60 * 60;
 const cookieName = 'egybell_hr';
 const reportColumns = [
-  ['Booking reference', 'reference'], ['Work email', 'email'], ['Phone number', 'phone'],
+  ['Booking reference', 'reference'], ['Full name', 'name'], ['Work email', 'email'], ['Phone number', 'phone'],
   ['Appointment date', 'date'], ['Cairo time', 'time'], ['Meeting room', 'room'],
   ['Booked at (UTC)', 'createdAt'],
 ];

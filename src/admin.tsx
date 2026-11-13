@@ -5,11 +5,11 @@ import './admin.css';
 
 type BookingWindow = {date: string; room: string; start: string; end: string};
 type Schedule = {windows: BookingWindow[]; revision: string};
-type Booking = {reference: string; email: string; phone: string; date: string; time: string; room: string};
+type Booking = {reference: string; name: string; email: string; phone: string; date: string; time: string; room: string};
 const emptyWindow: BookingWindow = {date: '', room: '', start: '09:00', end: '17:00'};
 const columns = [
   ['date', 'Date'], ['time', 'Cairo time'], ['room', 'Meeting room'],
-  ['email', 'Work email'], ['phone', 'Phone number'], ['reference', 'Reference'],
+  ['name', 'Name'], ['email', 'Work email'], ['phone', 'Phone number'], ['reference', 'Reference'],
 ] as const;
 
 class ApiError extends Error {
@@ -112,7 +112,7 @@ export function Admin() {
   }
 
   function deleteBooking(booking: Booking) {
-    const summary = booking.email + ' on ' + booking.date + ' at ' + booking.time + ' (' + booking.reference + ')';
+    const summary = (booking.name ? booking.name + ', ' : '') + booking.email + ' on ' + booking.date + ' at ' + booking.time + ' (' + booking.reference + ')';
     if (!window.confirm('Delete the booking for ' + summary + '?\n\nThe time slot becomes available again and this employee can book again. This cannot be undone.')) return;
     void run(async () => {
       await request('bookings/delete', {reference: booking.reference});

@@ -87,6 +87,15 @@ export function workEmail(value) {
   return email;
 }
 
+function fullName(value) {
+  const name = typeof value === 'string' ? value.trim().replace(/\s+/g, ' ') : '';
+  // Letters in any script (including Arabic), with spaces, apostrophes, hyphens and dots between names.
+  if (name.length < 2 || name.length > 100 || !/^\p{L}[\p{L}\p{M} .'’-]*$/u.test(name)) {
+    throw new RequestError(400, 'Enter your full name.');
+  }
+  return name;
+}
+
 function phoneNumber(value) {
   const raw = typeof value === 'string' ? value.trim() : '';
   const phone = raw.replace(/[ ()-]/g, '');
@@ -111,6 +120,11 @@ export function openStore(databasePath, {now = () => Date.now()} = {}) {
       email TEXT NOT NULL UNIQUE, phone TEXT NOT NULL, room TEXT NOT NULL, created_at TEXT NOT NULL
     ) STRICT;
   `);
+
+  // Bookings created before names were collected keep an empty name.
+  if (!db.prepare('SELECT 1 FROM pragma_table_info(?) WHERE name = ?').get('bookings', 'name')) {
+    db.exec("ALTER TABLE bookings ADD COLUMN name TEXT NOT NULL DEFAULT ''");
+  }
 
   function transaction(operation) {
     db.exec('BEGIN IMMEDIATE');
@@ -146,11 +160,11 @@ export function openStore(databasePath, {now = () => Date.now()} = {}) {
 
   const changeable = (date, time) => cairoTimestamp(date, time) - now() >= changeWindowMs;
   const bookingByEmail = db.prepare(`
-    SELECT reference, slot_id, date, time, bookings.room AS room
+    SELECT reference, slot_id, date, time, bookings.room AS room, name
     FROM bookings JOIN slots ON slots.id = bookings.slot_id WHERE email = ?
   `);
   const bookingView = booking => ({
-    id: booking.reference, slot: booking.slot_id, canCancel: changeable(booking.date, booking.time),
+    id: booking.reference, slot: booking.slot_id, name: booking.name, canCancel: changeable(booking.date, booking.time),
     details: {id: booking.slot_id, date: booking.date, time: booking.time, room: booking.room, available: false},
   });
 
@@ -187,8 +201,9 @@ export function openStore(databasePath, {now = () => Date.now()} = {}) {
         ...(includeBooking && booking && {booking: bookingView(booking)}),
       };
     },
-    book({email: rawEmail, phone: rawPhone, slotId}) {
+    book({email: rawEmail, name: rawName, phone: rawPhone, slotId}) {
       const email = workEmail(rawEmail);
+      const name = fullName(rawName);
       const phone = phoneNumber(rawPhone);
       if (typeof slotId !== 'string' || !/^[0-9a-f]{64}$/.test(slotId)) {
         throw new RequestError(400, 'Please choose a valid slot.');
@@ -217,8 +232,9 @@ export function openStore(databasePath, {now = () => Date.now()} = {}) {
         do {
           reference = randomBytes(4).toString('hex').toUpperCase();
         } while (referenceExists.get(reference));
-        db.prepare('INSERT INTO bookings VALUES (?, ?, ?, ?, ?, ?)').run(reference, slotId, email, phone, room, new Date(now()).toISOString());
-        return {id: reference, slot: slotId, details, canCancel: true};
+        db.prepare('INSERT INTO bookings (reference, slot_id, email, name, phone, room, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+          .run(reference, slotId, email, name, phone, room, new Date(now()).toISOString());
+        return {id: reference, slot: slotId, name, details, canCancel: true};
       });
     },
     schedule() {
@@ -248,7 +264,7 @@ export function openStore(databasePath, {now = () => Date.now()} = {}) {
     },
     bookings(from, to) {
       return db.prepare(`
-        SELECT reference, email, phone, date, time, bookings.room AS room, created_at AS createdAt
+        SELECT reference, name, email, phone, date, time, bookings.room AS room, created_at AS createdAt
         FROM bookings JOIN slots ON slots.id = bookings.slot_id
         WHERE date >= ? AND date <= ?
         ORDER BY date, time, room COLLATE NOCASE
