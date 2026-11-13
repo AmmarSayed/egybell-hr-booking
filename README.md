@@ -24,7 +24,7 @@ Connect this branch as a Render Blueprint using `render.yaml`. Render asks for `
 
 ### Clerk sign-in before booking
 
-Create a dedicated Clerk application for this booking portal. Enable email verification codes, add `afreximbank.com` under Restrictions → Allowlist, and keep the Clerk Account Portal enabled. The booking page uses the hosted sign-in and registration flow and sends the employee back to the booking page. HR's admin login is separate.
+Create a dedicated Clerk application for this booking portal. Enable email verification codes, add `afreximbank.com` under Restrictions → Allowlist, and keep the Clerk Account Portal enabled. The booking page opens a single sign-in-or-up modal: employees enter their work email and a one-time code, with no password or separate registration. In Clerk, turn off passwords and first/last name so the code is the only step. HR's admin login is separate.
 
 Set these variables on the server:
 

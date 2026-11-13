@@ -122,11 +122,11 @@ function App({identity}: {identity?: BookingIdentity}) {
  {step === 0 && <>
   <div className="section-icon"><Mail size={24}/></div>
   {identity && !identity.signedIn ? <>
-   <h2>Sign in to book</h2>
-   <p className="muted">Sign in or create an account with your @afreximbank.com work email.</p>
-   <SignInButton mode="redirect" forceRedirectUrl={import.meta.env.BASE_URL}
+   <h2>Confirm it’s you</h2>
+   <p className="muted">Enter your @afreximbank.com work email and we’ll send you a one-time code. No password or registration needed.</p>
+   <SignInButton mode="modal" withSignUp forceRedirectUrl={import.meta.env.BASE_URL}
      signUpForceRedirectUrl={import.meta.env.BASE_URL}>
-    <Button className="full">Sign in or create an account<ArrowRight size={18}/></Button>
+    <Button className="full">Continue with work email<ArrowRight size={18}/></Button>
    </SignInButton>
   </> : <>
    <h2>{identity ? 'Add your phone number' : 'Let’s start with you.'}</h2>
