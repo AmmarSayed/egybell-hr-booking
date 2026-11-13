@@ -66,8 +66,12 @@ test('Clerk booking verifies the session and uses the verified work email', asyn
   assert.equal((await (await api('availability', 'employee')).json()).hasBooking, true);
 });
 
-test('incomplete credentials and development keys are rejected on the live service', () => {
+test('the live service requires Clerk and warns about development keys', () => {
   assert.equal(createClerkBookingAuth({}), null);
+  assert.throws(() => createClerkBookingAuth({secure: true}), /must sign in/);
   assert.throws(() => createClerkBookingAuth({publishableKey, origin}), /together/);
-  assert.throws(() => createClerkBookingAuth({publishableKey, secretKey, origin, secure: true}), /live Clerk keys/);
+  const warnings = [];
+  const auth = createClerkBookingAuth({publishableKey, secretKey, origin, secure: true, log: {warn: message => warnings.push(message)}});
+  assert.equal(auth.publishableKey, publishableKey);
+  assert.match(warnings[0], /development keys/);
 });

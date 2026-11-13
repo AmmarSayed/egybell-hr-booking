@@ -1,8 +1,11 @@
 import {createClerkClient} from '@clerk/backend';
 import {RequestError, workEmail} from './store.mjs';
 
-export function createClerkBookingAuth({publishableKey, secretKey, origin, secure = false, clerkClient}) {
-  if (!publishableKey && !secretKey) return null;
+export function createClerkBookingAuth({publishableKey, secretKey, origin, secure = false, clerkClient, log = console}) {
+  if (!publishableKey && !secretKey) {
+    if (secure) throw new Error('Set CLERK_PUBLISHABLE_KEY and CLERK_SECRET_KEY so employees must sign in before booking.');
+    return null;
+  }
   if (!publishableKey || !secretKey) {
     throw new Error('Set CLERK_PUBLISHABLE_KEY and CLERK_SECRET_KEY together.');
   }
@@ -11,7 +14,7 @@ export function createClerkBookingAuth({publishableKey, secretKey, origin, secur
     throw new Error('Use matching Clerk publishable and secret key types.');
   }
   if (secure && keyMode !== 'live') {
-    throw new Error('Use live Clerk keys for the public booking service.');
+    log.warn('Clerk development keys are in use: sign-in shows a development badge and is limited to 100 users.');
   }
   const url = origin && URL.canParse(origin) ? new URL(origin) : null;
   if (!url || origin !== url.origin || (secure ? url.protocol !== 'https:' : !['https:', 'http:'].includes(url.protocol))) {

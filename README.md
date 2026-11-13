@@ -24,14 +24,14 @@ Connect this branch as a Render Blueprint using `render.yaml`. Render asks for `
 
 ### Clerk sign-in before booking
 
-Create a dedicated Clerk application for this booking portal. Enable email verification codes and keep the Clerk Account Portal enabled. The booking page uses the hosted sign-in and registration flow and sends the employee back to the booking page. HR's admin login is separate.
+Create a dedicated Clerk application for this booking portal. Enable email verification codes, add `afreximbank.com` under Restrictions → Allowlist, and keep the Clerk Account Portal enabled. The booking page uses the hosted sign-in and registration flow and sends the employee back to the booking page. HR's admin login is separate.
 
 Set these variables on the server:
 
 - `CLERK_PUBLISHABLE_KEY` and `CLERK_SECRET_KEY` from the same Clerk instance. Store the secret in Render's environment settings.
 - `BOOKING_ORIGIN` to the exact HTTPS origin visitors use, with no trailing slash. If omitted on Render, the server uses `RENDER_EXTERNAL_URL`.
 
-For local testing, use a development instance with `BOOKING_ORIGIN=http://127.0.0.1:8788` and run the built app with `npm start`. Use a test database. On the public service, use production keys and set up the production domain in Clerk first. Keep Clerk Test mode disabled in production. Without Clerk credentials the service uses the existing booking form.
+For local testing, use a development instance with `BOOKING_ORIGIN=http://127.0.0.1:8788` and run the built app with `npm start`. Use a test database. In production the server refuses to start without Clerk keys. Development keys work on the `onrender.com` URL (with a development badge and a 100-user cap); live keys need a custom domain you own, set up in Clerk first. Keep Clerk Test mode disabled in production. Locally, without Clerk credentials, the service uses the plain booking form.
 
 The booking API requires a Clerk session from the configured booking origin when Clerk is enabled. It uses the verified primary `@afreximbank.com` email from Clerk. If Google or phone sign-in is enabled in Clerk, employees still need a verified work address as their primary email before booking.
 
