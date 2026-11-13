@@ -29,3 +29,5 @@
   .admin-filters label{flex:1 1 125px}
   .admin-filters .button-primary{margin-left:0}
 }
+.admin-footer{flex-direction:column;align-items:flex-start;gap:4px;font-size:12px;margin-top:8px}
+.admin-footer .credits{gap:4px 14px}

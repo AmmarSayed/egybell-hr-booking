@@ -1,6 +1,7 @@
 import {useEffect, useState, type FormEvent} from 'react';
 import {CalendarDays, Download, LogOut, Plus, Trash2} from 'lucide-react';
 import {Button} from './button';
+import {SiteFooter} from './credits';
 import './admin.css';
 
 type BookingWindow = {date: string; room: string; start: string; end: string};
@@ -194,6 +195,7 @@ export function Admin() {
           </div> : <p className="admin-empty">No bookings in this date range.</p>}
         </section>
       </>}
+      <SiteFooter className="admin-footer"/>
     </main>
   </div>;
 }
