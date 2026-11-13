@@ -7,7 +7,7 @@ import {Admin} from './admin';
 import './style.css';
 type Slot={id:string;date:string;time:string;room:string;available:boolean};
 type Receipt={id:string;slot:string;details:Slot};
-type Availability={email:string;slots:Slot[];hasBooking:boolean};
+type Availability={email:string;slots:Slot[];hasBooking:boolean;booking?:Receipt};
 const heroDateText=(date:string)=>new Date(date+'T12:00:00').toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'});
 const dateText=(d:string,short=false)=>new Date(d+'T12:00:00').toLocaleDateString('en-GB',{day:'numeric',month:short?'short':'long',...(short?{}:{weekday:'long',year:'numeric'})});
 const appsScriptUrl = import.meta.env.VITE_APPS_SCRIPT_URL;
@@ -36,6 +36,26 @@ async function api<T>(payload: object, token?: string | null): Promise<T> {
 function App({identity}: {identity?: BookingIdentity}) {
  const [step,setStep]=useState(0),[email,setEmail]=useState(''),[phone,setPhone]=useState(''),[data,setData]=useState<Availability|null>(null),[day,setDay]=useState(''),[room,setRoom]=useState(''),[selected,setSelected]=useState<Slot|null>(null),[receipt,setReceipt]=useState<Receipt|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState('');
  const [scheduledDates,setScheduledDates]=useState<string[]|null>(null);
+ const [existing,setExisting]=useState(false);
+ useEffect(()=>{
+  if(!identity?.signedIn)return;
+  let active=true;
+  setBusy(true);
+  identity.getToken()
+   .then(token=>api<Availability>({action:'availability'},token))
+   .then(d=>{if(active&&d.booking)showExisting(d)})
+   .catch(()=>{/* The phone step still works; booking errors surface there. */})
+   .finally(()=>{if(active)setBusy(false)});
+  return ()=>{active=false};
+ },[identity?.signedIn]);
+ function showExisting(d:Availability){
+  if(!d.booking)return;
+  setData(d);
+  setEmail(d.email);
+  setReceipt(d.booking);
+  setExisting(true);
+  setStep(3);
+ }
  useEffect(()=>{
   let active=true;
   api<{dates:string[]}>({action:'schedule'})
@@ -52,6 +72,7 @@ function App({identity}: {identity?: BookingIdentity}) {
   try {
    const token = await identity?.getToken();
    const d = await api<Availability>({action: 'availability', ...(!identity && {email})}, token);
+   if (d.booking) return showExisting(d);
    const activeDay = d.slots.some(slot => slot.date === day) ? day : d.slots[0]?.date || '';
    const daySlots = d.slots.filter(slot => slot.date === activeDay);
    setData(d);
@@ -129,7 +150,7 @@ function App({identity}: {identity?: BookingIdentity}) {
  </>}
  {step===1&&<><div className="card-heading"><div><h2>Find your moment.</h2><p className="muted">All times are in Cairo local time.</p></div><Button variant="ghost" onClick={load} disabled={busy} aria-label="Refresh availability"><RefreshCw size={18} className={busy?'spin':''}/></Button></div>{data?.hasBooking?<div className="empty"><CheckCircle2 size={36}/><h3>You already have an appointment.</h3><p>There is an existing booking under this email. Please contact HR if you need to change it.</p></div>:!data?.slots.length?<div className="empty">No appointments are currently available. Please check with HR.</div>:<><label>Choose a day</label><div className="days">{dates.map(d=><button disabled={busy} aria-pressed={day===d} className={'day '+(day===d?'active':'')} key={d} onClick={()=>{setDay(d);setSelected(null);const first=data?.slots.find(s=>s.date===d);if(first)setRoom(first.room)}}><span>{new Date(d+'T12:00:00').toLocaleDateString('en-GB',{weekday:'short'})}</span><strong>{new Date(d+'T12:00:00').getDate()}</strong><span>{new Date(d+'T12:00:00').toLocaleDateString('en-GB',{month:'long'})}</span>{day===d&&<CheckCircle2 size={17}/>}</button>)}</div><label htmlFor="room">Meeting room</label><select id="room" value={room} disabled={busy} onChange={e=>{setRoom(e.target.value);setSelected(null)}}>{rooms.map(r=><option key={r}>{r}</option>)}</select><div className="time-heading"><label>Available times</label><span><i/>Available</span></div>{!data?.slots.some(s=>s.date===day&&s.room===room&&s.available)&&<p className="note">No times are available in this room on this day. Choose another room or day.</p>}<div className="times">{data?.slots.filter(s=>s.date===day&&s.room===room&&s.available).map(s=><button key={s.id} disabled={!s.available||busy} aria-pressed={selected?.id===s.id} aria-label={s.time+(s.available?' available':' booked')} className={selected?.id===s.id?'chosen':''} onClick={()=>setSelected(s)}>{s.time}{selected?.id===s.id&&<Check size={14}/>}</button>)}</div><div className="selection">{selected?<><Clock3 size={16}/>{selected.time} · {selected.room} · 15 minutes</>:'Select an available time to continue.'}</div><Button className="full" disabled={!selected||busy} onClick={()=>{setError('');setStep(2)}}>Review appointment<ArrowRight size={18}/></Button></>}<Button variant="ghost" onClick={()=>{setStep(0);setError('')}} disabled={busy}><ArrowLeft size={16}/>Edit your details</Button></>}
  {step===2&&selected&&<><div className="section-icon"><CalendarDays size={24}/></div><h2>Everything look right?</h2><p className="muted">Review your appointment before confirming.</p><div className="appointment"><div><CalendarDays/><span><small>Date</small><strong>{dateText(selected.date)}</strong></span></div><div><Clock3/><span><small>Time · Cairo</small><strong>{selected.time} · 15 minutes</strong></span></div><div><MapPin/><span><small>Meeting room</small><strong>{selected.room}</strong></span></div></div><div className="contacts"><p><Mail size={16}/>{email.trim().toLowerCase()}</p><p><Phone size={16}/>{phone}</p></div><p className="arrival-note"><strong>Please bring your national ID</strong> to this appointment for contract signing.</p><p className="note">Your time is reserved only after confirmation. If someone books it first, you’ll be asked to choose another.</p><Button className="full" disabled={busy} onClick={confirm}>{busy?<><LoaderCircle size={18} className="spin" aria-hidden="true"/><span role="status" aria-live="polite">Confirming your appointment…</span></>:<>Confirm appointment<Check size={18}/></>}</Button><Button variant="ghost" disabled={busy} onClick={()=>{setStep(1);setError('')}}><ArrowLeft size={16}/>Choose a different time</Button></>}
- {step===3&&receipt&&<><div className="success-icon"><Check size={32}/></div><span className="confirmed">Booking confirmed</span><h2>You’re all booked.</h2><p className="muted">We look forward to seeing you.</p><div className="appointment"><div><CalendarDays/><span><small>Date</small><strong>{dateText(receipt.details.date)}</strong></span></div><div><Clock3/><span><small>Time · Cairo</small><strong>{receipt.details.time} · 15 minutes</strong></span></div><div><MapPin/><span><small>Meeting room</small><strong>{receipt.details.room}</strong></span></div></div><div className="reference"><small>Your booking reference</small><strong>{receipt.id}</strong></div><p className="arrival-note"><strong>Please bring your national ID</strong> to this appointment for contract signing.</p><Button className="full" onClick={download}><Download size={18}/>Download confirmation</Button><p className="privacy">Save the image to your phone, or take a screenshot of this page. No confirmation email will be sent.</p></>}
+ {step===3&&receipt&&<><div className="success-icon"><Check size={32}/></div><span className="confirmed">Booking confirmed</span><h2>{existing?'You already have an appointment.':'You’re all booked.'}</h2><p className="muted">{existing?'Here are your booking details. Please contact HR if you need to change it.':'We look forward to seeing you.'}</p><div className="appointment"><div><CalendarDays/><span><small>Date</small><strong>{dateText(receipt.details.date)}</strong></span></div><div><Clock3/><span><small>Time · Cairo</small><strong>{receipt.details.time} · 15 minutes</strong></span></div><div><MapPin/><span><small>Meeting room</small><strong>{receipt.details.room}</strong></span></div></div><div className="reference"><small>Your booking reference</small><strong>{receipt.id}</strong></div><p className="arrival-note"><strong>Please bring your national ID</strong> to this appointment for contract signing.</p><Button className="full" onClick={download}><Download size={18}/>Download confirmation</Button><p className="privacy">Save the image to your phone, or take a screenshot of this page. No confirmation email will be sent.</p></>}
  </section><footer><span>Egybell · Human Resources</span><span>Designed & developed by Ammar Sayed · © {new Date().getFullYear()} Ammar Sayed. All rights reserved.</span></footer></div></main></div>
 }
 function ClerkBooking() {

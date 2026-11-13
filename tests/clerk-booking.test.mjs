@@ -63,7 +63,12 @@ test('Clerk booking verifies the session and uses the verified work email', asyn
   assert.equal((await api('book', null, {email, slotId, phone: '+201000000001'})).status, 401);
   const booking = await api('book', 'employee', {email: 'different@afreximbank.com', slotId, phone: '+201000000001'});
   assert.equal(booking.status, 200);
-  assert.equal((await (await api('availability', 'employee')).json()).hasBooking, true);
+  const existing = await (await api('availability', 'employee')).json();
+  assert.equal(existing.hasBooking, true);
+  assert.equal(existing.booking.id, (await booking.json()).id);
+  assert.equal(existing.booking.details.date, slots[0].date);
+  assert.equal(existing.booking.details.room, slots[0].room);
+  assert.equal(existing.booking.phone, undefined);
 });
 
 test('the live service requires Clerk and warns about development keys', () => {

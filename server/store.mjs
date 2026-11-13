@@ -141,7 +141,7 @@ export function openStore(databasePath) {
   return {
     close: () => db.close(),
     dates: () => db.prepare('SELECT DISTINCT date FROM slots WHERE active = 1 ORDER BY date').all().map(row => row.date),
-    availability(rawEmail) {
+    availability(rawEmail, {includeBooking = false} = {}) {
       const email = workEmail(rawEmail);
       const result = db.prepare(`
         SELECT slots.*, bookings.slot_id IS NULL AS available
@@ -149,10 +149,18 @@ export function openStore(databasePath) {
         WHERE active = 1
         ORDER BY date, room COLLATE NOCASE, time
       `).all();
+      const booking = db.prepare(`
+        SELECT reference, slot_id, date, time, bookings.room AS room
+        FROM bookings JOIN slots ON slots.id = bookings.slot_id WHERE email = ?
+      `).get(email);
       return {
         email,
         slots: result.map(({id, date, time, room, available}) => ({id, date, time, room, available: Boolean(available)})),
-        hasBooking: Boolean(db.prepare('SELECT 1 FROM bookings WHERE email = ?').get(email)),
+        hasBooking: Boolean(booking),
+        ...(includeBooking && booking && {booking: {
+          id: booking.reference, slot: booking.slot_id,
+          details: {id: booking.slot_id, date: booking.date, time: booking.time, room: booking.room, available: false},
+        }}),
       };
     },
     book({email: rawEmail, phone: rawPhone, slotId}) {
@@ -191,6 +199,14 @@ export function openStore(databasePath) {
       return {windows: JSON.parse(windows), revision: revisionOf(windows)};
     },
     saveSchedule,
+    deleteBooking(reference) {
+      if (typeof reference !== 'string' || !/^[0-9A-F]{8}$/.test(reference)) {
+        throw new RequestError(400, 'Choose a valid booking to delete.');
+      }
+      const {changes} = db.prepare('DELETE FROM bookings WHERE reference = ?').run(reference);
+      if (!changes) throw new RequestError(404, 'That booking was already deleted. Refresh the list.');
+      return {deleted: reference};
+    },
     bookings(from, to) {
       return db.prepare(`
         SELECT reference, email, phone, date, time, bookings.room AS room, created_at AS createdAt

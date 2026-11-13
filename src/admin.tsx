@@ -111,6 +111,16 @@ export function Admin() {
     });
   }
 
+  function deleteBooking(booking: Booking) {
+    const summary = booking.email + ' on ' + booking.date + ' at ' + booking.time + ' (' + booking.reference + ')';
+    if (!window.confirm('Delete the booking for ' + summary + '?\n\nThe time slot becomes available again and this employee can book again. This cannot be undone.')) return;
+    void run(async () => {
+      await request('bookings/delete', {reference: booking.reference});
+      setBookings(current => current.filter(row => row.reference !== booking.reference));
+      setStatus('Booking ' + booking.reference + ' deleted. The time slot is available again.');
+    });
+  }
+
   function logout() {
     void run(async () => {
       await request('logout', {});
@@ -173,8 +183,13 @@ export function Admin() {
           </form>
           {bookings.length ? <div className="admin-table" tabIndex={0} aria-label="Booking results">
             <table>
-              <thead><tr>{columns.map(([key, label]) => <th scope="col" key={key}>{label}</th>)}</tr></thead>
-              <tbody>{bookings.map(booking => <tr key={booking.reference}>{columns.map(([key]) => <td key={key}>{booking[key]}</td>)}</tr>)}</tbody>
+              <thead><tr>{columns.map(([key, label]) => <th scope="col" key={key}>{label}</th>)}<th scope="col"><span className="sr-only">Actions</span></th></tr></thead>
+              <tbody>{bookings.map(booking => <tr key={booking.reference}>
+                {columns.map(([key]) => <td key={key}>{booking[key]}</td>)}
+                <td><Button type="button" variant="outline" className="admin-delete" disabled={busy}
+                  aria-label={'Delete booking ' + booking.reference} title="Delete booking"
+                  onClick={() => deleteBooking(booking)}><Trash2 size={16}/></Button></td>
+              </tr>)}</tbody>
             </table>
           </div> : <p className="admin-empty">No bookings in this date range.</p>}
         </section>

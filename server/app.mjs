@@ -59,7 +59,8 @@ export function createBookingApp({databasePath, adminPassword, secure = false, s
       throw new RequestError(400, 'Invalid booking request.');
     }
     const email = bookingAuth ? await bookingAuth.verifiedEmail(req.get('authorization')) : body.email;
-    if (body.action === 'availability') return res.json(store.availability(email));
+    // Booking details are only returned to a verified Clerk identity, never to a typed-in email.
+    if (body.action === 'availability') return res.json(store.availability(email, {includeBooking: Boolean(bookingAuth)}));
     return res.json(store.book({...body, email}));
   });
 
@@ -109,6 +110,7 @@ export function createBookingApp({databasePath, adminPassword, secure = false, s
   }
 
   admin.get('/bookings', (req, res) => res.json({bookings: filteredBookings(req)}));
+  admin.post('/bookings/delete', (req, res) => res.json(store.deleteBooking(req.body.reference)));
   admin.get('/report.csv', (req, res) => {
     const bookings = filteredBookings(req);
     const rows = [reportColumns.map(([label]) => label), ...bookings.map(row => reportColumns.map(([, key]) => row[key]))];
