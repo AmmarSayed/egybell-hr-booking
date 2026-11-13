@@ -19,7 +19,7 @@ Employees use the portal to book a 15-minute, in-person appointment with HR. The
 
 1. Open the booking page and click **Continue with work email**.
 2. Enter their @afreximbank.com email, then type the **one-time code** sent to that inbox. No password or registration is needed.
-3. Enter a **phone number** (with country code) for HR coordination.
+3. Enter their **full name** (as on their national ID) and a **phone number** (with country code) for HR coordination.
 4. Choose a **day**, **meeting room** and **time**, then review and click **Confirm appointment**.
 5. They receive a **booking reference** on screen and can **download the confirmation image** or take a screenshot. **No confirmation email is sent.**
 
@@ -27,7 +27,7 @@ If an employee signs in again later, the portal shows their existing appointment
 
 ## What HR can request from Ammar
 
-- **Booking list:** an up-to-date list of all bookings (date, time, room, work email, phone number, reference) as an Excel/CSV file, for any date range.
+- **Booking list:** an up-to-date list of all bookings (date, time, room, name, work email, phone number, reference) as an Excel/CSV file, for any date range.
 - **Schedule changes:** opening new dates, rooms or hours, or closing them. Please send the date, meeting room and start and end times (Cairo time, on 15-minute boundaries). Existing bookings are kept when hours are closed.
 - **Booking changes within 24 hours:** removing an employee's booking so they can choose a new time. Please send the employee's work email or booking reference.
 
