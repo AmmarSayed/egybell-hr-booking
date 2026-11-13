@@ -1,5 +1,29 @@
 # Egybell HR Booking
 
+## Standalone booking portal
+
+The standalone version serves the employee portal, admin dashboard, and booking API from one URL. SQLite stores the schedule and confirmed bookings. The initial schedule is November 24 and 25, 2026, with the four requested rooms and 15-minute appointments between 09:00 and 17:00 Cairo time.
+
+Open `/admin` to sign in, edit each room and date, or filter bookings and download an Excel-compatible CSV. Removing a time from availability preserves its confirmed bookings in the report.
+
+### Run locally
+
+Use Node.js 24. Set `ADMIN_PASSWORD` in your environment to a strong password of at least 16 characters.
+
+```sh
+npm ci
+npm run build
+npm start
+```
+
+Open `http://127.0.0.1:8788/` for booking and `http://127.0.0.1:8788/admin` for administration. The local database is stored in `data/bookings.sqlite`. Run `npm test` to verify both backends.
+
+### Publish on Render
+
+Connect this branch as a Render Blueprint using `render.yaml`. Render asks for `ADMIN_PASSWORD` during setup. The Blueprint provisions a paid web service with a persistent disk. After deployment, use its HTTPS URL for employees and append `/admin` for HR. Try the HTTPS URL from the employee network before sharing it.
+
+### Legacy deployment
+
 React + TypeScript + Vite, Tailwind CSS and a shadcn-style Radix button. A single Cloudflare Worker serves the compiled website and forwards `/api/booking` to the existing Google Apps Script service. Google Sheets is the only database.
 
 Run `npm install`, `npm run build`, then `node build-worker.mjs` to produce worker.js for Cloudflare. The alternative Pages Function source is preserved under functions/api/booking.ts. No secrets or API keys are embedded. The public booking endpoints enforce the same email-domain and phone validation as the existing public Apps Script app.

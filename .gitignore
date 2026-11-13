@@ -10,3 +10,5 @@ worker.js
 *.log
 .DS_Store
 /*.png
+
+/data/

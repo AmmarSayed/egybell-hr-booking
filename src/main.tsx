@@ -2,6 +2,7 @@ import React,{useEffect,useState} from 'react';
 import {createRoot} from 'react-dom/client';
 import {ArrowRight,ArrowLeft,CalendarDays,Clock3,MapPin,Check,Download,ShieldCheck,RefreshCw,Phone,Mail,CheckCircle2,LoaderCircle} from 'lucide-react';
 import {Button} from './button';
+import {Admin} from './admin';
 import './style.css';
 type Slot={id:string;date:string;time:string;room:string;available:boolean};
 type Receipt={id:string;slot:string;details:Slot};
@@ -48,4 +49,5 @@ function App(){
  {step===3&&receipt&&<><div className="success-icon"><Check size={32}/></div><span className="confirmed">Booking confirmed</span><h2>You’re all booked.</h2><p className="muted">We look forward to seeing you.</p><div className="appointment"><div><CalendarDays/><span><small>Date</small><strong>{dateText(receipt.details.date)}</strong></span></div><div><Clock3/><span><small>Time · Cairo</small><strong>{receipt.details.time} · 15 minutes</strong></span></div><div><MapPin/><span><small>Meeting room</small><strong>{receipt.details.room}</strong></span></div></div><div className="reference"><small>Your booking reference</small><strong>{receipt.id}</strong></div><p className="arrival-note"><strong>Please bring your national ID</strong> to this appointment for contract signing.</p><Button className="full" onClick={download}><Download size={18}/>Download confirmation</Button><p className="privacy">Save the image to your phone, or take a screenshot of this page. No confirmation email will be sent.</p></>}
  </section><footer><span>Egybell · Human Resources</span><span>Designed & developed by Ammar Sayed · © {new Date().getFullYear()} Ammar Sayed. All rights reserved.</span></footer></div></main></div>
 }
-createRoot(document.getElementById('root')!).render(<App/>);
+const isAdmin = !appsScriptUrl && /^\/admin\/?$/.test(window.location.pathname);
+createRoot(document.getElementById('root')!).render(isAdmin ? <Admin/> : <App/>);
