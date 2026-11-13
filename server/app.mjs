@@ -21,11 +21,11 @@ function csvCell(value) {
   return '"' + safe.replaceAll('"', '""') + '"';
 }
 
-export function createBookingApp({databasePath, adminPassword, secure = false, staticDir = 'dist', bookingAuth = null}) {
+export function createBookingApp({databasePath, adminPassword, secure = false, staticDir = 'dist', bookingAuth = null, now}) {
   if (typeof adminPassword !== 'string' || adminPassword.length < 16 || adminPassword.length > 256) {
     throw new Error('Set ADMIN_PASSWORD to a strong password between 16 and 256 characters.');
   }
-  const store = openStore(databasePath);
+  const store = openStore(databasePath, {now});
   const expectedPassword = digest(adminPassword);
   const sessions = new Map();
   const cookieOptions = {httpOnly: true, sameSite: 'strict', secure, path: '/api/admin'};
@@ -55,10 +55,13 @@ export function createBookingApp({databasePath, adminPassword, secure = false, s
   api.post('/booking', async (req, res) => {
     const body = req.body;
     if (body.action === 'schedule') return res.json({dates: store.dates()});
-    if (body.action !== 'availability' && body.action !== 'book') {
+    if (!['availability', 'book', 'cancel'].includes(body.action)) {
       throw new RequestError(400, 'Invalid booking request.');
     }
+    // Cancelling needs proof of identity, so it is unavailable when emails are self-reported.
+    if (body.action === 'cancel' && !bookingAuth) throw new RequestError(403, 'Sign in to cancel your appointment.');
     const email = bookingAuth ? await bookingAuth.verifiedEmail(req.get('authorization')) : body.email;
+    if (body.action === 'cancel') return res.json(store.cancel(email));
     // Booking details are only returned to a verified Clerk identity, never to a typed-in email.
     if (body.action === 'availability') return res.json(store.availability(email, {includeBooking: Boolean(bookingAuth)}));
     return res.json(store.book({...body, email}));

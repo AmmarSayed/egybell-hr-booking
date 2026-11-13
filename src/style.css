@@ -96,3 +96,7 @@ footer{flex-wrap:wrap;gap:6px 16px}footer span:last-child{line-height:1.5}
 .header-signout{display:inline-flex;align-items:center;gap:6px;padding:8px 12px;border:1px solid #dce2ef;border-radius:8px;background:#fff;color:#244394;font:600 13px Arial,sans-serif;white-space:nowrap}
 .header-signout:hover{background:#eef2fb}
 @media(max-width:560px){.header-email{display:none}}
+
+.notice{background:#e6f4ec;color:#184c36;padding:12px 16px;border-radius:8px;margin-bottom:16px;font-size:14px;line-height:1.5}
+.change-booking{margin-top:22px;padding-top:18px;border-top:1px solid #e6eaf2}
+.change-booking p{margin:0 0 12px;font-size:13px;line-height:1.6;color:#636363}

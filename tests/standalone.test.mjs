@@ -5,6 +5,7 @@ import {join} from 'node:path';
 import test from 'node:test';
 import {once} from 'node:events';
 import {createBookingApp} from '../server/app.mjs';
+import {openStore} from '../server/store.mjs';
 
 test('booking and HR management share a durable database', async t => {
   const dir = await mkdtemp(join(tmpdir(), 'egybell-test-'));
@@ -13,7 +14,7 @@ test('booking and HR management share a durable database', async t => {
   t.after(() => rm(dir, {recursive: true, force: true}));
 
   async function start() {
-    const {app, close} = createBookingApp({databasePath, adminPassword});
+    const {app, close} = createBookingApp({databasePath, adminPassword, now: () => Date.parse('2026-11-01T00:00:00Z')});
     const server = app.listen(0, '127.0.0.1');
     await once(server, 'listening');
     return {
@@ -44,6 +45,8 @@ test('booking and HR management share a durable database', async t => {
 
   const slots = (await (await publicApi({action: 'availability', email})).json()).slots;
   assert.equal(slots.length, 128);
+  // Without Clerk there is no proof of identity, so cancelling is refused.
+  assert.equal((await publicApi({action: 'cancel', email})).status, 403);
   const before = await (await publicApi({action: 'availability', email})).json();
   assert.equal(before.booking, undefined);
   const slotId = slots[0].id;
@@ -101,4 +104,19 @@ test('booking and HR management share a durable database', async t => {
   const rebooked = await publicApi({action: 'book', email: winner, phone: '+201000000001', slotId: openSlot.id});
   assert.equal(rebooked.status, 200);
   assert.deepEqual((await (await publicApi({action: 'schedule'})).json()).dates, ['2026-11-24', '2026-11-25', '2026-11-26']);
+});
+
+test('appointments must be booked at least 24 hours ahead in Cairo time', () => {
+  // 24 Nov 2026 09:00 Cairo is 07:00 UTC; the clock is 23 Nov 08:00 UTC, so 09:00-09:45 are under 24 hours away.
+  const store = openStore(':memory:', {now: () => Date.parse('2026-11-23T08:00:00Z')});
+  try {
+    const {slots} = store.availability('employee@afreximbank.com');
+    const at = time => slots.find(slot => slot.date === '2026-11-24' && slot.room === 'Meeting Room 9' && slot.time === time);
+    assert.equal(at('09:45').available, false);
+    assert.equal(at('10:00').available, true);
+    assert.throws(() => store.book({email: 'employee@afreximbank.com', phone: '+201000000001', slotId: at('09:45').id}), /24 hours in advance/);
+    assert.equal(store.book({email: 'employee@afreximbank.com', phone: '+201000000001', slotId: at('10:00').id}).canCancel, true);
+  } finally {
+    store.close();
+  }
 });

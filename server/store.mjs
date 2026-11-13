@@ -8,6 +8,24 @@ const initialWindows = [
   {date: '2026-11-25', room: 'Meeting Room 14', start: '09:00', end: '17:00'},
 ];
 const sessionMinutes = 15;
+export const changeWindowHours = 24;
+const changeWindowMs = changeWindowHours * 60 * 60 * 1000;
+const cairoParts = new Intl.DateTimeFormat('en-US', {
+  timeZone: 'Africa/Cairo', hourCycle: 'h23',
+  year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit',
+});
+
+/** Converts a Cairo wall-clock date and time to a UTC timestamp, following Egypt's daylight saving rules. */
+export function cairoTimestamp(date, time) {
+  const wallClock = Date.parse(date + 'T' + time + ':00Z');
+  let guess = wallClock;
+  for (let i = 0; i < 2; i++) {
+    const parts = Object.fromEntries(cairoParts.formatToParts(new Date(guess)).map(({type, value}) => [type, value]));
+    const shown = Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second);
+    guess += wallClock - shown;
+  }
+  return guess;
+}
 
 export class RequestError extends Error {
   constructor(status, message) {
@@ -78,7 +96,7 @@ function phoneNumber(value) {
   return phone;
 }
 
-export function openStore(databasePath) {
+export function openStore(databasePath, {now = () => Date.now()} = {}) {
   const db = new DatabaseSync(databasePath);
   db.exec(`
     PRAGMA foreign_keys = ON;
@@ -126,6 +144,16 @@ export function openStore(databasePath) {
     });
   }
 
+  const changeable = (date, time) => cairoTimestamp(date, time) - now() >= changeWindowMs;
+  const bookingByEmail = db.prepare(`
+    SELECT reference, slot_id, date, time, bookings.room AS room
+    FROM bookings JOIN slots ON slots.id = bookings.slot_id WHERE email = ?
+  `);
+  const bookingView = booking => ({
+    id: booking.reference, slot: booking.slot_id, canCancel: changeable(booking.date, booking.time),
+    details: {id: booking.slot_id, date: booking.date, time: booking.time, room: booking.room, available: false},
+  });
+
   function revisionOf(json) {
     return createHash('sha256').update(json ?? '').digest('hex');
   }
@@ -149,18 +177,14 @@ export function openStore(databasePath) {
         WHERE active = 1
         ORDER BY date, room COLLATE NOCASE, time
       `).all();
-      const booking = db.prepare(`
-        SELECT reference, slot_id, date, time, bookings.room AS room
-        FROM bookings JOIN slots ON slots.id = bookings.slot_id WHERE email = ?
-      `).get(email);
+      const booking = bookingByEmail.get(email);
       return {
         email,
-        slots: result.map(({id, date, time, room, available}) => ({id, date, time, room, available: Boolean(available)})),
+        slots: result.map(({id, date, time, room, available}) => ({
+          id, date, time, room, available: Boolean(available) && changeable(date, time),
+        })),
         hasBooking: Boolean(booking),
-        ...(includeBooking && booking && {booking: {
-          id: booking.reference, slot: booking.slot_id,
-          details: {id: booking.slot_id, date: booking.date, time: booking.time, room: booking.room, available: false},
-        }}),
+        ...(includeBooking && booking && {booking: bookingView(booking)}),
       };
     },
     book({email: rawEmail, phone: rawPhone, slotId}) {
@@ -180,6 +204,9 @@ export function openStore(databasePath) {
           return {id: existing.reference, slot: slotId, details: {id, date, time, room: existing.room}};
         }
         if (!slot?.active) throw new RequestError(400, 'That slot is no longer available. Refresh availability.');
+        if (!changeable(slot.date, slot.time)) {
+          throw new RequestError(400, 'Appointments must be booked at least ' + changeWindowHours + ' hours in advance. Choose a later time.');
+        }
         const {id, date, room, time} = slot;
         const details = {id, date, room, time};
         if (db.prepare('SELECT 1 FROM bookings WHERE slot_id = ?').get(slotId)) {
@@ -190,8 +217,8 @@ export function openStore(databasePath) {
         do {
           reference = randomBytes(4).toString('hex').toUpperCase();
         } while (referenceExists.get(reference));
-        db.prepare('INSERT INTO bookings VALUES (?, ?, ?, ?, ?, ?)').run(reference, slotId, email, phone, room, new Date().toISOString());
-        return {id: reference, slot: slotId, details};
+        db.prepare('INSERT INTO bookings VALUES (?, ?, ?, ?, ?, ?)').run(reference, slotId, email, phone, room, new Date(now()).toISOString());
+        return {id: reference, slot: slotId, details, canCancel: true};
       });
     },
     schedule() {
@@ -199,6 +226,18 @@ export function openStore(databasePath) {
       return {windows: JSON.parse(windows), revision: revisionOf(windows)};
     },
     saveSchedule,
+    cancel(rawEmail) {
+      const email = workEmail(rawEmail);
+      return transaction(() => {
+        const booking = bookingByEmail.get(email);
+        if (!booking) throw new RequestError(404, 'You have no appointment to cancel.');
+        if (!changeable(booking.date, booking.time)) {
+          throw new RequestError(409, 'Appointments can only be cancelled up to ' + changeWindowHours + ' hours before. Please contact HR.');
+        }
+        db.prepare('DELETE FROM bookings WHERE reference = ?').run(booking.reference);
+        return {cancelled: booking.reference};
+      });
+    },
     deleteBooking(reference) {
       if (typeof reference !== 'string' || !/^[0-9A-F]{8}$/.test(reference)) {
         throw new RequestError(400, 'Choose a valid booking to delete.');

@@ -31,7 +31,8 @@ test('Clerk booking verifies the session and uses the verified work email', asyn
     },
   };
   const bookingAuth = createClerkBookingAuth({publishableKey, secretKey, origin, clerkClient});
-  const {app, close} = createBookingApp({databasePath: ':memory:', adminPassword: 'test-only-password-123', bookingAuth});
+  let clock = Date.parse('2026-11-01T00:00:00Z');
+  const {app, close} = createBookingApp({databasePath: ':memory:', adminPassword: 'test-only-password-123', bookingAuth, now: () => clock});
   const server = app.listen(0, '127.0.0.1');
   await once(server, 'listening');
   t.after(async () => {
@@ -69,6 +70,31 @@ test('Clerk booking verifies the session and uses the verified work email', asyn
   assert.equal(existing.booking.details.date, slots[0].date);
   assert.equal(existing.booking.details.room, slots[0].room);
   assert.equal(existing.booking.phone, undefined);
+  assert.equal(existing.booking.canCancel, true);
+
+  // Cancelling more than 24 hours ahead frees the slot so the employee can choose again.
+  assert.equal((await api('cancel', null)).status, 401);
+  const cancelled = await api('cancel', 'employee');
+  assert.equal(cancelled.status, 200);
+  assert.equal((await api('cancel', 'employee')).status, 404);
+  const afterCancel = await (await api('availability', 'employee')).json();
+  assert.equal(afterCancel.hasBooking, false);
+  assert.equal(afterCancel.slots.find(slot => slot.id === slotId).available, true);
+  assert.equal((await api('book', 'employee', {slotId, phone: '+201000000001'})).status, 200);
+
+  // slots[0] is 24 Nov 09:00 Cairo (07:00 UTC). From 23 Nov 08:00 UTC it is 23 hours away.
+  assert.equal(slots[0].date + ' ' + slots[0].time, '2026-11-24 09:00');
+  clock = Date.parse('2026-11-23T08:00:00Z');
+  const late = await (await api('availability', 'employee')).json();
+  assert.equal(late.booking.canCancel, false);
+  const cancelLate = await api('cancel', 'employee');
+  assert.equal(cancelLate.status, 409);
+  assert.match((await cancelLate.json()).error, /24 hours/);
+  // 10:00 Cairo on 24 Nov is exactly 24 hours away: earlier slots close, later ones stay open.
+  const onThe24th = late.slots.filter(slot => slot.date === '2026-11-24' && slot.id !== slotId);
+  assert.ok(onThe24th.filter(slot => slot.time < '10:00').every(slot => !slot.available));
+  assert.ok(onThe24th.filter(slot => slot.time >= '10:00').every(slot => slot.available));
+  assert.equal((await api('cancel', 'employee')).status, 409);
 });
 
 test('the live service requires Clerk and warns about development keys', () => {

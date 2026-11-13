@@ -33,6 +33,8 @@ Set these variables on the server:
 
 For local testing, use a development instance with `BOOKING_ORIGIN=http://127.0.0.1:8788` and run the built app with `npm start`. Use a test database. In production the server refuses to start without Clerk keys. Development keys work on the `onrender.com` URL (with a development badge and a 100-user cap); live keys need a custom domain you own, set up in Clerk first. Keep Clerk Test mode disabled in production. Locally, without Clerk credentials, the service uses the plain booking form.
 
+Employees can book only slots that start at least 24 hours later (Cairo time) and can cancel their own appointment up to 24 hours before it, then book again. Cancelling requires Clerk sign-in.
+
 The booking API requires a Clerk session from the configured booking origin when Clerk is enabled. It uses the verified primary `@afreximbank.com` email from Clerk. If Google or phone sign-in is enabled in Clerk, employees still need a verified work address as their primary email before booking.
 
 ### Legacy deployment
