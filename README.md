@@ -22,6 +22,19 @@ Open `http://127.0.0.1:8788/` for booking and `http://127.0.0.1:8788/admin` for 
 
 Connect this branch as a Render Blueprint using `render.yaml`. Render asks for `ADMIN_PASSWORD` during setup. The Blueprint provisions a paid web service with a persistent disk. After deployment, use its HTTPS URL for employees and append `/admin` for HR. Try the HTTPS URL from the employee network before sharing it.
 
+### Clerk sign-in before booking
+
+Create a dedicated Clerk application for this booking portal. Enable email verification codes and keep the Clerk Account Portal enabled. The booking page uses the hosted sign-in and registration flow and sends the employee back to the booking page. HR's admin login is separate.
+
+Set these variables on the server:
+
+- `CLERK_PUBLISHABLE_KEY` and `CLERK_SECRET_KEY` from the same Clerk instance. Store the secret in Render's environment settings.
+- `BOOKING_ORIGIN` to the exact HTTPS origin visitors use, with no trailing slash. If omitted on Render, the server uses `RENDER_EXTERNAL_URL`.
+
+For local testing, use a development instance with `BOOKING_ORIGIN=http://127.0.0.1:8788` and run the built app with `npm start`. Use a test database. On the public service, use production keys and set up the production domain in Clerk first. Keep Clerk Test mode disabled in production. Without Clerk credentials the service uses the existing booking form.
+
+The booking API requires a Clerk session from the configured booking origin when Clerk is enabled. It uses the verified primary `@afreximbank.com` email from Clerk. If Google or phone sign-in is enabled in Clerk, employees still need a verified work address as their primary email before booking.
+
 ### Legacy deployment
 
 React + TypeScript + Vite, Tailwind CSS and a shadcn-style Radix button. A single Cloudflare Worker serves the compiled website and forwards `/api/booking` to the existing Google Apps Script service. Google Sheets is the only database.

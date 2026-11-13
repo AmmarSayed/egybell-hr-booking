@@ -21,7 +21,7 @@ function csvCell(value) {
   return '"' + safe.replaceAll('"', '""') + '"';
 }
 
-export function createBookingApp({databasePath, adminPassword, secure = false, staticDir = 'dist'}) {
+export function createBookingApp({databasePath, adminPassword, secure = false, staticDir = 'dist', bookingAuth = null}) {
   if (typeof adminPassword !== 'string' || adminPassword.length < 16 || adminPassword.length > 256) {
     throw new Error('Set ADMIN_PASSWORD to a strong password between 16 and 256 characters.');
   }
@@ -51,12 +51,16 @@ export function createBookingApp({databasePath, adminPassword, secure = false, s
     next();
   });
   api.get('/health', (_req, res) => res.json({ok: true}));
-  api.post('/booking', (req, res) => {
+  api.get('/booking-auth', (_req, res) => res.json({publishableKey: bookingAuth?.publishableKey ?? null}));
+  api.post('/booking', async (req, res) => {
     const body = req.body;
     if (body.action === 'schedule') return res.json({dates: store.dates()});
-    if (body.action === 'availability') return res.json(store.availability(body.email));
-    if (body.action === 'book') return res.json(store.book(body));
-    throw new RequestError(400, 'Invalid booking request.');
+    if (body.action !== 'availability' && body.action !== 'book') {
+      throw new RequestError(400, 'Invalid booking request.');
+    }
+    const email = bookingAuth ? await bookingAuth.verifiedEmail(req.get('authorization')) : body.email;
+    if (body.action === 'availability') return res.json(store.availability(email));
+    return res.json(store.book({...body, email}));
   });
 
   const admin = express.Router();

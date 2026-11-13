@@ -61,7 +61,7 @@ function makeSlots(windows) {
   return {slots: [...slots.values()], windows: normalized};
 }
 
-function workEmail(value) {
+export function workEmail(value) {
   const email = typeof value === 'string' ? value.trim().toLowerCase() : '';
   if (email.length > 254 || !/^[a-z0-9][a-z0-9._%+~-]*@afreximbank\.com$/.test(email)) {
     throw new RequestError(400, 'Use your @afreximbank.com work email.');
