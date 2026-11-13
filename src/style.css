@@ -90,3 +90,9 @@
 footer{flex-wrap:wrap;gap:6px 16px}footer span:last-child{line-height:1.5}
 
 .arrival-note{margin:18px 0 0;padding:14px 16px;border-left:3px solid #d49a00;border-radius:6px;background:#fff4cc;color:#624900;font-size:13px;line-height:1.6}
+
+.header-account{display:flex;align-items:center;gap:12px;min-width:0}
+.header-email{font-size:13px;color:#636363;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:260px}
+.header-signout{display:inline-flex;align-items:center;gap:6px;padding:8px 12px;border:1px solid #dce2ef;border-radius:8px;background:#fff;color:#244394;font:600 13px Arial,sans-serif;white-space:nowrap}
+.header-signout:hover{background:#eef2fb}
+@media(max-width:560px){.header-email{display:none}}

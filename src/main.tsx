@@ -1,7 +1,7 @@
 import React,{useEffect,useState} from 'react';
 import {createRoot} from 'react-dom/client';
-import {ClerkFailed, ClerkLoading, ClerkProvider, SignInButton, SignOutButton, useAuth} from '@clerk/react';
-import {ArrowRight,ArrowLeft,CalendarDays,Clock3,MapPin,Check,Download,ShieldCheck,RefreshCw,Phone,Mail,CheckCircle2,LoaderCircle} from 'lucide-react';
+import {ClerkFailed, ClerkLoading, ClerkProvider, SignInButton, SignOutButton, useAuth, useUser} from '@clerk/react';
+import {ArrowRight,ArrowLeft,CalendarDays,Clock3,MapPin,Check,Download,ShieldCheck,RefreshCw,Phone,Mail,CheckCircle2,LoaderCircle,LogOut} from 'lucide-react';
 import {Button} from './button';
 import {Admin} from './admin';
 import './style.css';
@@ -14,6 +14,7 @@ const appsScriptUrl = import.meta.env.VITE_APPS_SCRIPT_URL;
 
 type BookingIdentity = {
   signedIn: boolean;
+  email?: string;
   getToken: () => Promise<string | null>;
 };
 
@@ -117,7 +118,7 @@ function App({identity}: {identity?: BookingIdentity}) {
   }
  }
  async function download(){if(!receipt)return;try{const c=document.createElement('canvas');c.width=1080;c.height=1320;const ctx=c.getContext('2d');if(!ctx)throw Error('Download unavailable. Please take a screenshot instead.');ctx.fillStyle='#ffffff';ctx.fillRect(0,0,1080,1320);ctx.fillStyle='#244394';ctx.fillRect(0,0,1080,220);ctx.fillStyle='#f72f2f';ctx.fillRect(0,220,1080,12);ctx.fillStyle='#ffffff';ctx.font='bold 42px Arial';ctx.fillText('Egybell',64,95);ctx.font='28px Arial';ctx.fillText('HR appointment confirmation',64,155);ctx.fillStyle='#244394';ctx.font='bold 54px Arial';ctx.fillText('Your appointment is booked.',64,335);ctx.fillStyle='#636363';ctx.font='26px Arial';const lines=[['Date',dateText(receipt.details.date)],['Time',receipt.details.time+' · Cairo time · 15 minutes'],['Location',receipt.details.room],['Work email',email.trim().toLowerCase()],['Booking reference',receipt.id]];let y=435;for(const [label,value]of lines){ctx.fillStyle='#636363';ctx.font='24px Arial';ctx.fillText(label,64,y);ctx.fillStyle='#163c3d';ctx.font='bold 29px Arial';ctx.fillText(value,64,y+48,950);y+=145;}ctx.fillStyle='#fff4cc';ctx.fillRect(64,1170,952,116);ctx.fillStyle='#d49a00';ctx.fillRect(64,1170,6,116);ctx.fillStyle='#624900';ctx.font='bold 26px Arial';ctx.fillText('Please bring your national ID',90,1214);ctx.font='24px Arial';ctx.fillText('to this appointment for contract signing.',90,1254);const blob=await new Promise<Blob|null>(resolve=>c.toBlob(resolve,'image/png'));if(!blob)throw Error('Download unavailable. Please take a screenshot instead.');const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='HR-appointment-'+receipt.id+'.png';a.click();setTimeout(()=>URL.revokeObjectURL(url),10000)}catch(e){setError((e as Error).message)}}
- return <div className="app" data-step={step}><header className="topbar"><a className="wordmark" href={import.meta.env.BASE_URL}>Egybell<span>HR appointments</span></a><div className="header-note"><span className="live-dot"/>Employee booking portal</div></header><main className="layout"><aside className="intro"><div className="eyebrow"><span/>Your time. Your conversation.</div><h1>A little time. <br/>A meaningful <br/><em>conversation.</em></h1><p className="intro-copy">Book a one-to-one appointment with HR. Choose the day, room, and time that works for you.</p><div className="event-facts"><div><Clock3 size={20}/><span>15-minute appointments</span></div><div><MapPin size={20}/><span>In person · Cairo local time</span></div><div><CalendarDays size={20}/><span role="status">{heroDateLabel}</span></div></div><div className="aside-bottom"><ShieldCheck size={20}/><p>One appointment per work email.<br/>Your contact details are recorded for HR.</p></div><div className="abstract" aria-hidden="true"><div/><div/><div/></div></aside><div className="workspace"><nav className="steps" aria-label="Booking progress">{['Your details','Choose a time','Review'].map((label,i)=><div className={(Math.min(step,2)===i?'current ':step>i?'done ':'')+'step'} key={label}><span>{step>i?<Check size={14}/>:i+1}</span><small>{label}</small></div>)}</nav><section className="card" aria-busy={busy}>
+ return <div className="app" data-step={step}><header className="topbar"><a className="wordmark" href={import.meta.env.BASE_URL}>Egybell<span>HR appointments</span></a>{identity?.signedIn?<div className="header-account">{identity.email&&<span className="header-email" title={identity.email}>{identity.email}</span>}<SignOutButton redirectUrl={import.meta.env.BASE_URL}><button type="button" className="header-signout"><LogOut size={16} aria-hidden="true"/>Sign out</button></SignOutButton></div>:<div className="header-note"><span className="live-dot"/>Employee booking portal</div>}</header><main className="layout"><aside className="intro"><div className="eyebrow"><span/>Your time. Your conversation.</div><h1>A little time. <br/>A meaningful <br/><em>conversation.</em></h1><p className="intro-copy">Book a one-to-one appointment with HR. Choose the day, room, and time that works for you.</p><div className="event-facts"><div><Clock3 size={20}/><span>15-minute appointments</span></div><div><MapPin size={20}/><span>In person · Cairo local time</span></div><div><CalendarDays size={20}/><span role="status">{heroDateLabel}</span></div></div><div className="aside-bottom"><ShieldCheck size={20}/><p>One appointment per work email.<br/>Your contact details are recorded for HR.</p></div><div className="abstract" aria-hidden="true"><div/><div/><div/></div></aside><div className="workspace"><nav className="steps" aria-label="Booking progress">{['Your details','Choose a time','Review'].map((label,i)=><div className={(Math.min(step,2)===i?'current ':step>i?'done ':'')+'step'} key={label}><span>{step>i?<Check size={14}/>:i+1}</span><small>{label}</small></div>)}</nav><section className="card" aria-busy={busy}>
  {error&&<div className="error" role="alert">{error}</div>}
  {step === 0 && <>
   <div className="section-icon"><Mail size={24}/></div>
@@ -155,8 +156,10 @@ function App({identity}: {identity?: BookingIdentity}) {
 }
 function ClerkBooking() {
  const {isLoaded, isSignedIn, userId, getToken} = useAuth();
+ const {user} = useUser();
  if (!isLoaded) return null;
- return <App key={userId ?? 'signed-out'} identity={{signedIn: Boolean(isSignedIn), getToken}}/>;
+ const email = user?.primaryEmailAddress?.emailAddress;
+ return <App key={userId ?? 'signed-out'} identity={{signedIn: Boolean(isSignedIn), email, getToken}}/>;
 }
 
 function BookingPage() {
