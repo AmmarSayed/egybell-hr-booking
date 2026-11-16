@@ -7,6 +7,10 @@ import './admin.css';
 type BookingWindow = {date: string; room: string; start: string; end: string};
 type Schedule = {windows: BookingWindow[]; revision: string};
 type Booking = {reference: string; name: string; email: string; phone: string; date: string; time: string; room: string};
+type BookingReport = {
+  bookings: Booking[];
+  stats: {scheduledSlots: number; bookedScheduledSlots: number};
+};
 const emptyWindow: BookingWindow = {date: '', room: '', start: '09:00', end: '17:00'};
 const columns = [
   ['date', 'Date'], ['time', 'Cairo time'], ['room', 'Meeting room'],
@@ -30,24 +34,51 @@ async function request<T>(path: string, body?: object): Promise<T> {
   return data;
 }
 
-export function Admin() {
+function BookingStats({report}: {report: BookingReport}) {
+  const {scheduledSlots, bookedScheduledSlots} = report.stats;
+  const formatNumber = new Intl.NumberFormat('en');
+  const fillRate = new Intl.NumberFormat('en', {style: 'percent', maximumFractionDigits: 1});
+
+  return <dl className="admin-stats" aria-label="Reservation statistics for the selected date range">
+    <div>
+      <dt>Confirmed bookings</dt>
+      <dd>{formatNumber.format(report.bookings.length)}</dd>
+    </div>
+    <div>
+      <dt>Scheduled slots</dt>
+      <dd>{formatNumber.format(scheduledSlots)}</dd>
+    </div>
+    <div>
+      <dt>Fill rate</dt>
+      <dd>{scheduledSlots ? fillRate.format(bookedScheduledSlots / scheduledSlots) : '—'}</dd>
+      <dd className="admin-stat-detail">
+        {scheduledSlots
+          ? formatNumber.format(bookedScheduledSlots) + ' of ' + formatNumber.format(scheduledSlots) + ' scheduled slots booked'
+          : 'No slots scheduled'}
+      </dd>
+    </div>
+  </dl>;
+}
+
+export function Admin({page}: {page: 'bookings' | 'setup'}) {
   const [schedule, setSchedule] = useState<Schedule | null>(null);
-  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [report, setReport] = useState<BookingReport | null>(null);
   const [filters, setFilters] = useState({from: '', to: ''});
   const [reportQuery, setReportQuery] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(true);
   const [status, setStatus] = useState('');
   const [error, setError] = useState('');
+  const signedIn = schedule !== null || report !== null;
 
   async function loadDashboard() {
-    const [next, report] = await Promise.all([
-      request<Schedule>('schedule'), request<{bookings: Booking[]}>('bookings'),
-    ]);
-    setSchedule(next);
-    setBookings(report.bookings);
-    setFilters({from: '', to: ''});
-    setReportQuery('');
+    if (page === 'setup') {
+      setSchedule(await request<Schedule>('schedule'));
+    } else {
+      setReport(await request<BookingReport>('bookings'));
+      setFilters({from: '', to: ''});
+      setReportQuery('');
+    }
   }
 
   useEffect(() => {
@@ -56,7 +87,7 @@ export function Admin() {
         if (failure.status !== 401) setError('Could not load the dashboard. Refresh the page to try again.');
       })
       .finally(() => setBusy(false));
-  }, []);
+  }, [page]);
 
   async function run(action: () => Promise<void>) {
     setBusy(true);
@@ -67,7 +98,7 @@ export function Admin() {
     } catch (failure) {
       if (failure instanceof ApiError && failure.status === 401) {
         setSchedule(null);
-        setBookings([]);
+        setReport(null);
       }
       setError((failure as Error).message);
     } finally {
@@ -106,19 +137,18 @@ export function Admin() {
       if (filters.from) params.set('from', filters.from);
       if (filters.to) params.set('to', filters.to);
       const query = params.size ? '?' + params.toString() : '';
-      const report = await request<{bookings: Booking[]}>('bookings' + query);
-      setBookings(report.bookings);
+      setReport(await request<BookingReport>('bookings' + query));
       setReportQuery(query);
     });
   }
 
   function deleteBooking(booking: Booking) {
     const summary = (booking.name ? booking.name + ', ' : '') + booking.email + ' on ' + booking.date + ' at ' + booking.time + ' (' + booking.reference + ')';
-    if (!window.confirm('Delete the booking for ' + summary + '?\n\nThe time slot becomes available again and this employee can book again. This cannot be undone.')) return;
+    if (!window.confirm('Delete the booking for ' + summary + '?\n\nThe employee can book another available slot. This cannot be undone.')) return;
     void run(async () => {
       await request('bookings/delete', {reference: booking.reference});
-      setBookings(current => current.filter(row => row.reference !== booking.reference));
-      setStatus('Booking ' + booking.reference + ' deleted. The time slot is available again.');
+      setStatus('Booking ' + booking.reference + ' deleted.');
+      setReport(await request<BookingReport>('bookings' + reportQuery));
     });
   }
 
@@ -126,19 +156,23 @@ export function Admin() {
     void run(async () => {
       await request('logout', {});
       setSchedule(null);
-      setBookings([]);
+      setReport(null);
     });
   }
 
   return <div className="admin">
     <header className="topbar">
       <a className="wordmark" href="/">Egybell<span>HR appointments</span></a>
-      {schedule && <Button variant="ghost" onClick={logout} disabled={busy}><LogOut size={16}/> Sign out</Button>}
+      {signedIn && <Button variant="ghost" onClick={logout} disabled={busy}><LogOut size={16}/> Sign out</Button>}
     </header>
-    <main className={schedule ? 'admin-workspace' : 'admin-signin'}>
+    <main className={signedIn ? 'admin-workspace' : 'admin-signin'} aria-busy={busy}>
+      {signedIn && <nav className="admin-nav" aria-label="Booking administration">
+        <a href="/admin" aria-current={page === 'bookings' ? 'page' : undefined}>Bookings overview</a>
+        <a href="/admin/setup" aria-current={page === 'setup' ? 'page' : undefined}>Setup</a>
+      </nav>}
       {error && <p className="error" role="alert">{error}</p>}
       {status && <p className="admin-status" role="status">{status}</p>}
-      {!schedule ? <section className="admin-panel">
+      {!signedIn && <section className="admin-panel">
         <h1>Booking administration</h1>
         <form onSubmit={login}>
           <label htmlFor="admin-password">Administrator password</label>
@@ -146,8 +180,9 @@ export function Admin() {
             value={password} onChange={event => setPassword(event.target.value)} disabled={busy}/>
           <Button className="full" disabled={busy}>Sign in</Button>
         </form>
-      </section> : <>
-        <h1>Booking administration</h1>
+      </section>}
+      {schedule && <>
+        <h1>Setup</h1>
         <section className="admin-panel">
           <h2><CalendarDays size={20}/> Appointment schedule</h2>
           <p className="muted">Set the hours for each room and date in Cairo time. Appointments are 15 minutes.</p>
@@ -173,6 +208,10 @@ export function Admin() {
             </fieldset>
           </form>
         </section>
+      </>}
+      {report && <>
+        <h1>Bookings overview</h1>
+        <BookingStats report={report}/>
         <section className="admin-panel">
           <h2>Bookings</h2>
           <form className="admin-filters" onSubmit={refreshReport}>
@@ -182,10 +221,10 @@ export function Admin() {
             <Button variant="outline" disabled={busy}>Apply filter</Button>
             <a className="button button-primary" href={'/api/admin/report.csv' + reportQuery}><Download size={16}/> Download CSV</a>
           </form>
-          {bookings.length ? <div className="admin-table" tabIndex={0} aria-label="Booking results">
+          {report.bookings.length ? <div className="admin-table" tabIndex={0} aria-label="Booking results">
             <table>
               <thead><tr>{columns.map(([key, label]) => <th scope="col" key={key}>{label}</th>)}<th scope="col"><span className="sr-only">Actions</span></th></tr></thead>
-              <tbody>{bookings.map(booking => <tr key={booking.reference}>
+              <tbody>{report.bookings.map(booking => <tr key={booking.reference}>
                 {columns.map(([key]) => <td key={key}>{booking[key]}</td>)}
                 <td><Button type="button" variant="outline" className="admin-delete" disabled={busy}
                   aria-label={'Delete booking ' + booking.reference} title="Delete booking"

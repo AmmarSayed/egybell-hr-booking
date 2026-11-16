@@ -270,5 +270,12 @@ export function openStore(databasePath, {now = () => Date.now()} = {}) {
         ORDER BY date, time, room COLLATE NOCASE
       `).all(from || '0000-01-01', to || '9999-12-31');
     },
+    bookingStats(from, to) {
+      return db.prepare(`
+        SELECT COUNT(*) AS scheduledSlots, COUNT(bookings.slot_id) AS bookedScheduledSlots
+        FROM slots LEFT JOIN bookings ON bookings.slot_id = slots.id
+        WHERE slots.active = 1 AND slots.date BETWEEN ? AND ?
+      `).get(from || '0000-01-01', to || '9999-12-31');
+    },
   };
 }

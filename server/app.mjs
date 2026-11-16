@@ -104,18 +104,22 @@ export function createBookingApp({databasePath, adminPassword, secure = false, s
     res.json(store.saveSchedule(req.body.windows, req.body.revision));
   });
 
-  function filteredBookings(req) {
+  function reportDates(req) {
     const {from, to} = req.query;
     if ((from !== undefined && !isDate(from)) || (to !== undefined && !isDate(to)) || (from && to && from > to)) {
       throw new RequestError(400, 'Enter a valid date range.');
     }
-    return store.bookings(from, to);
+    return {from, to};
   }
 
-  admin.get('/bookings', (req, res) => res.json({bookings: filteredBookings(req)}));
+  admin.get('/bookings', (req, res) => {
+    const {from, to} = reportDates(req);
+    res.json({bookings: store.bookings(from, to), stats: store.bookingStats(from, to)});
+  });
   admin.post('/bookings/delete', (req, res) => res.json(store.deleteBooking(req.body.reference)));
   admin.get('/report.csv', (req, res) => {
-    const bookings = filteredBookings(req);
+    const {from, to} = reportDates(req);
+    const bookings = store.bookings(from, to);
     const rows = [reportColumns.map(([label]) => label), ...bookings.map(row => reportColumns.map(([, key]) => row[key]))];
     const csv = '\uFEFF' + rows.map(row => row.map(csvCell).join(',')).join('\r\n') + '\r\n';
     res.set('Content-Disposition', 'attachment; filename="egybell-bookings.csv"').type('text/csv').send(csv);
@@ -124,7 +128,9 @@ export function createBookingApp({databasePath, adminPassword, secure = false, s
 
   const root = resolve(staticDir);
   app.use(express.static(root, {index: false}));
-  app.get(['/', '/admin', '/admin/'], (_req, res) => res.set('Cache-Control', 'no-cache').sendFile(resolve(root, 'index.html')));
+  app.get(['/', '/admin', '/admin/setup'], (_req, res) => {
+    res.set('Cache-Control', 'no-cache').sendFile(resolve(root, 'index.html'));
+  });
   app.use((error, _req, res, _next) => {
     if (error instanceof RequestError) return res.status(error.status).json({error: error.message});
     if (error.type === 'entity.parse.failed') return res.status(400).json({error: 'Invalid JSON.'});

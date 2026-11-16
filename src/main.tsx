@@ -227,5 +227,8 @@ function BookingPage() {
  </ClerkProvider>;
 }
 
-const isAdmin = !appsScriptUrl && /^\/admin\/?$/.test(window.location.pathname);
-createRoot(document.getElementById('root')!).render(isAdmin ? <Admin/> : <BookingPage/>);
+const pathname = window.location.pathname.replace(/\/$/, '');
+const isAdmin = !appsScriptUrl && (pathname === '/admin' || pathname === '/admin/setup');
+createRoot(document.getElementById('root')!).render(
+ isAdmin ? <Admin page={pathname === '/admin/setup' ? 'setup' : 'bookings'}/> : <BookingPage/>
+);

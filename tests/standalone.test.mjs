@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {mkdtemp, rm} from 'node:fs/promises';
+import {mkdtemp, rm, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import test from 'node:test';
@@ -11,11 +11,12 @@ import {DatabaseSync} from 'node:sqlite';
 test('booking and HR management share a durable database', async t => {
   const dir = await mkdtemp(join(tmpdir(), 'egybell-test-'));
   const databasePath = join(dir, 'bookings.sqlite');
+  await writeFile(join(dir, 'index.html'), '<div id="root"></div>');
   const adminPassword = 'test-only-password-123';
   t.after(() => rm(dir, {recursive: true, force: true}));
 
   async function start() {
-    const {app, close} = createBookingApp({databasePath, adminPassword, now: () => Date.parse('2026-11-01T00:00:00Z')});
+    const {app, close} = createBookingApp({databasePath, adminPassword, staticDir: dir, now: () => Date.parse('2026-11-01T00:00:00Z')});
     const server = app.listen(0, '127.0.0.1');
     await once(server, 'listening');
     return {
@@ -39,6 +40,12 @@ test('booking and HR management share a durable database', async t => {
   const schedule = await (await publicApi({action: 'schedule'})).json();
   assert.deepEqual(schedule.dates, ['2026-11-24', '2026-11-25']);
   assert.equal((await request('/api/admin/report.csv')).status, 401);
+  assert.equal((await request('/api/admin/bookings')).status, 401);
+  for (const page of ['/admin', '/admin/setup', '/admin/setup/']) {
+    const response = await request(page);
+    assert.equal(response.status, 200, page);
+    assert.match(await response.text(), /id="root"/);
+  }
   assert.equal((await request('/api/admin/login', {password: 'wrong'})).status, 401);
   const login = await request('/api/admin/login', {password: adminPassword});
   assert.equal(login.status, 200);
@@ -63,6 +70,18 @@ test('booking and HR management share a durable database', async t => {
   // Without Clerk the email is self-reported, so booking details must not be returned.
   assert.equal((await (await publicApi({action: 'availability', email: winner})).json()).booking, undefined);
   assert.equal((await publicApi({...booking, email: winner, slotId: slots[1].id})).status, 409);
+
+  const report = async (query, auth = cookie) => (await request('/api/admin/bookings' + query, undefined, auth)).json();
+  const firstDay = '?from=2026-11-24&to=2026-11-24';
+  const bookedReport = await report(firstDay);
+  assert.deepEqual(bookedReport.bookings.map(row => row.reference), [receipt.id]);
+  assert.deepEqual(bookedReport.stats, {scheduledSlots: 64, bookedScheduledSlots: 1});
+  assert.deepEqual(await report('?from=2026-11-25&to=2026-11-25'), {
+    bookings: [], stats: {scheduledSlots: 64, bookedScheduledSlots: 0},
+  });
+  assert.deepEqual(await report('?from=2026-11-27'), {
+    bookings: [], stats: {scheduledSlots: 0, bookedScheduledSlots: 0},
+  });
 
   const {windows, revision} = await (await request('/api/admin/schedule', undefined, cookie)).json();
   const current = windows.find(w => w.date === slots[0].date && w.room === slots[0].room);
@@ -90,6 +109,9 @@ test('booking and HR management share a durable database', async t => {
   assert.ok(!afterClosing.some(slot => slot.id === slotId));
   const archivedReport = await (await request('/api/admin/report.csv', undefined, cookie)).text();
   assert.ok(archivedReport.includes(receipt.id));
+  const afterClosingReport = await report(firstDay);
+  assert.deepEqual(afterClosingReport.bookings.map(row => row.reference), [receipt.id]);
+  assert.deepEqual(afterClosingReport.stats, {scheduledSlots: 32, bookedScheduledSlots: 0});
 
   await instance.stop();
   instance = await start();
@@ -102,6 +124,9 @@ test('booking and HR management share a durable database', async t => {
   assert.equal((await remove('not-a-ref')).status, 400);
   assert.equal((await remove(receipt.id)).status, 200);
   assert.equal((await remove(receipt.id)).status, 404);
+  assert.deepEqual(await report(firstDay, freshCookie), {
+    bookings: [], stats: {scheduledSlots: 32, bookedScheduledSlots: 0},
+  });
   assert.ok(!(await (await request('/api/admin/report.csv', undefined, freshCookie)).text()).includes(receipt.id));
   const afterDelete = await (await publicApi({action: 'availability', email: winner})).json();
   assert.equal(afterDelete.hasBooking, false);
