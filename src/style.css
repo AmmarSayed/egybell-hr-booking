@@ -127,6 +127,16 @@ footer .credits a:hover{color:#244394;text-decoration:underline}
   object-fit: contain;
 }
 
+.confirmation-brand {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.confirmation-brand .success-icon {
+  margin: 0;
+}
 @media (max-width: 680px) {
   .header-right { gap: 10px; }
   .pie-signature { gap: 6px; font-size: 13px; }
