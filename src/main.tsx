@@ -3,7 +3,7 @@ import {createRoot} from 'react-dom/client';
 import {ClerkFailed, ClerkLoading, ClerkProvider, SignInButton, SignOutButton, useAuth, useUser} from '@clerk/react';
 import {ArrowRight,ArrowLeft,CalendarDays,Clock3,MapPin,Check,Download,ShieldCheck,RefreshCw,Phone,Mail,CheckCircle2,LoaderCircle,LogOut,User} from 'lucide-react';
 import {Button} from './button';
-import {Admin} from './admin';
+import {Admin, type AdminPage} from './admin';
 import {SiteFooter} from './credits';
 import {PieSignature} from './pie-signature';
 import {downloadConfirmation} from './confirmation-download';
@@ -271,7 +271,12 @@ function BookingPage() {
 }
 
 const pathname = window.location.pathname.replace(/\/$/, '');
-const isAdmin = !appsScriptUrl && (pathname === '/admin' || pathname === '/admin/setup');
+const adminPages: Partial<Record<string, AdminPage>> = {
+ '/admin': 'bookings',
+ '/admin/setup': 'setup',
+ '/admin/cancellations': 'cancellations',
+};
+const adminPage = !appsScriptUrl && adminPages[pathname];
 createRoot(document.getElementById('root')!).render(
- isAdmin ? <Admin page={pathname === '/admin/setup' ? 'setup' : 'bookings'}/> : <BookingPage/>
+ adminPage ? <Admin page={adminPage}/> : <BookingPage/>
 );

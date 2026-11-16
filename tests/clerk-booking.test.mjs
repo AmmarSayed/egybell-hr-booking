@@ -81,7 +81,9 @@ test('Clerk booking verifies the session and uses the verified work email', asyn
   const afterCancel = await (await api('availability', 'employee')).json();
   assert.equal(afterCancel.hasBooking, false);
   assert.equal(afterCancel.slots.find(slot => slot.id === slotId).available, true);
-  assert.equal((await api('book', 'employee', {slotId, name: 'Mona Hassan', phone: '+201000000001'})).status, 200);
+  const rebooked = await api('book', 'employee', {slotId, name: 'Mona Hassan', phone: '+201000000001'});
+  assert.equal(rebooked.status, 200);
+  assert.notEqual((await rebooked.json()).id, existing.booking.id);
 
   // slots[0] is 24 Nov 09:00 Cairo (07:00 UTC). From 23 Nov 08:00 UTC it is 23 hours away.
   assert.equal(slots[0].date + ' ' + slots[0].time, '2026-11-24 09:00');
@@ -96,6 +98,35 @@ test('Clerk booking verifies the session and uses the verified work email', asyn
   assert.ok(onThe24th.filter(slot => slot.time < '10:00').every(slot => !slot.available));
   assert.ok(onThe24th.filter(slot => slot.time >= '10:00').every(slot => slot.available));
   assert.equal((await api('cancel', 'employee')).status, 409);
+
+  assert.equal((await fetch(base + 'admin/cancellations', {headers: {authorization: 'Bearer employee'}})).status, 401);
+  const adminLogin = await fetch(base + 'admin/login', {
+    method: 'POST',
+    headers: {'content-type': 'application/json'},
+    body: JSON.stringify({password: 'test-only-password-123'}),
+  });
+  const cookie = adminLogin.headers.get('set-cookie').split(';')[0];
+  const history = query => fetch(base + 'admin/cancellations' + query, {headers: {cookie}});
+  const result = await history('?email=EMPLOYEE&from=2026-11-24&to=2026-11-24');
+  assert.equal(result.status, 200);
+  const recorded = {
+    bookings: [{
+      reference: existing.booking.id, name: 'Mona Hassan', email,
+      date: slots[0].date, time: slots[0].time, room: slots[0].room,
+      cancelledAt: '2026-11-01T00:00:00.000Z',
+    }],
+    pagination: {page: 1, pageSize: 25, total: 1},
+  };
+  assert.deepEqual(await result.json(), recorded);
+  assert.equal((await (await history('?email=someone-else')).json()).pagination.total, 0);
+  const schedule = await (await fetch(base + 'admin/schedule', {headers: {cookie}})).json();
+  const update = await fetch(base + 'admin/schedule', {
+    method: 'POST',
+    headers: {'content-type': 'application/json', cookie},
+    body: JSON.stringify({windows: [], revision: schedule.revision}),
+  });
+  assert.equal(update.status, 200);
+  assert.deepEqual(await (await history('')).json(), recorded);
 });
 
 test('the live service requires Clerk and warns about development keys', () => {

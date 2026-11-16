@@ -116,18 +116,36 @@ export function createBookingApp({databasePath, adminPassword, secure = false, s
     return {from, to, email: email.trim().toLowerCase()};
   }
 
-  admin.get('/bookings', (req, res) => {
-    const {from, to, email} = reportFilters(req);
+  function requestedPage(req) {
     const {page: rawPage = '1'} = req.query;
     if (typeof rawPage !== 'string' || !/^[1-9][0-9]*$/.test(rawPage) || !Number.isSafeInteger(Number(rawPage))) {
       throw new RequestError(400, 'Enter a valid page number.');
     }
+    return Number(rawPage);
+  }
+
+  function reportPagination(requested, total) {
+    const lastPage = Math.max(1, Math.ceil(total / bookingsPerPage));
+    return {page: Math.min(requested, lastPage), pageSize: bookingsPerPage, total};
+  }
+
+  admin.get('/bookings', (req, res) => {
+    const {from, to, email} = reportFilters(req);
+    const requested = requestedPage(req);
     const stats = store.bookingStats(from, to);
     const total = email ? store.countBookings(from, to, email) : stats.confirmedBookings;
-    const lastPage = Math.max(1, Math.ceil(total / bookingsPerPage));
-    const page = Math.min(Number(rawPage), lastPage);
-    const bookings = store.bookings(from, to, email, bookingsPerPage, (page - 1) * bookingsPerPage);
-    res.json({bookings, stats, pagination: {page, pageSize: bookingsPerPage, total}});
+    const pagination = reportPagination(requested, total);
+    const {page, pageSize} = pagination;
+    const bookings = store.bookings(from, to, email, pageSize, (page - 1) * pageSize);
+    res.json({bookings, stats, pagination});
+  });
+  admin.get('/cancellations', (req, res) => {
+    const {from, to, email} = reportFilters(req);
+    const requested = requestedPage(req);
+    const pagination = reportPagination(requested, store.countCancellations(from, to, email));
+    const {page, pageSize} = pagination;
+    const bookings = store.cancellations(from, to, email, pageSize, (page - 1) * pageSize);
+    res.json({bookings, pagination});
   });
   admin.post('/bookings/delete', (req, res) => res.json(store.deleteBooking(req.body.reference)));
   admin.get('/report.csv', (req, res) => {
@@ -141,7 +159,7 @@ export function createBookingApp({databasePath, adminPassword, secure = false, s
 
   const root = resolve(staticDir);
   app.use(express.static(root, {index: false}));
-  app.get(['/', '/admin', '/admin/setup'], (_req, res) => {
+  app.get(['/', '/admin', '/admin/setup', '/admin/cancellations'], (_req, res) => {
     res.set('Cache-Control', 'no-cache').sendFile(resolve(root, 'index.html'));
   });
   app.use((error, _req, res, _next) => {

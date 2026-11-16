@@ -41,7 +41,7 @@ test('booking and HR management share a durable database', async t => {
   assert.deepEqual(schedule.dates, ['2026-11-24', '2026-11-25']);
   assert.equal((await request('/api/admin/report.csv')).status, 401);
   assert.equal((await request('/api/admin/bookings')).status, 401);
-  for (const page of ['/admin', '/admin/setup', '/admin/setup/']) {
+  for (const page of ['/admin', '/admin/setup', '/admin/setup/', '/admin/cancellations']) {
     const response = await request(page);
     assert.equal(response.status, 200, page);
     assert.match(await response.text(), /id="root"/);

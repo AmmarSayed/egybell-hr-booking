@@ -9,6 +9,7 @@ const initialWindows = [
 ];
 const sessionMinutes = 15;
 const bookingFilters = 'slots.date BETWEEN ? AND ? AND instr(lower(bookings.email), ?) > 0';
+const cancellationFilters = 'date BETWEEN ? AND ? AND instr(lower(email), ?) > 0';
 export const changeWindowHours = 24;
 const changeWindowMs = changeWindowHours * 60 * 60 * 1000;
 const cairoParts = new Intl.DateTimeFormat('en-US', {
@@ -120,6 +121,10 @@ export function openStore(databasePath, {now = () => Date.now()} = {}) {
       reference TEXT PRIMARY KEY, slot_id TEXT NOT NULL UNIQUE REFERENCES slots(id),
       email TEXT NOT NULL UNIQUE, phone TEXT NOT NULL, room TEXT NOT NULL, created_at TEXT NOT NULL
     ) STRICT;
+    CREATE TABLE IF NOT EXISTS booking_cancellations (
+      reference TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL,
+      date TEXT NOT NULL, time TEXT NOT NULL, room TEXT NOT NULL, cancelled_at TEXT NOT NULL
+    ) STRICT;
   `);
 
   // Bookings created before names were collected keep an empty name.
@@ -228,11 +233,15 @@ export function openStore(databasePath, {now = () => Date.now()} = {}) {
         if (db.prepare('SELECT 1 FROM bookings WHERE slot_id = ?').get(slotId)) {
           throw new RequestError(409, 'This slot was just booked. Refresh availability and choose another.');
         }
-        const referenceExists = db.prepare('SELECT 1 FROM bookings WHERE reference = ?');
+        const referenceExists = db.prepare(`
+          SELECT 1 FROM bookings WHERE reference = ?
+          UNION ALL SELECT 1 FROM booking_cancellations WHERE reference = ?
+          LIMIT 1
+        `);
         let reference;
         do {
           reference = randomBytes(4).toString('hex').toUpperCase();
-        } while (referenceExists.get(reference));
+        } while (referenceExists.get(reference, reference));
         db.prepare('INSERT INTO bookings (reference, slot_id, email, name, phone, room, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
           .run(reference, slotId, email, name, phone, room, new Date(now()).toISOString());
         return {id: reference, slot: slotId, name, details, canCancel: true};
@@ -251,9 +260,27 @@ export function openStore(databasePath, {now = () => Date.now()} = {}) {
         if (!changeable(booking.date, booking.time)) {
           throw new RequestError(409, 'Appointments can only be cancelled up to ' + changeWindowHours + ' hours before. Please contact HR.');
         }
+        db.prepare(`
+          INSERT INTO booking_cancellations (reference, name, email, date, time, room, cancelled_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+        `).run(booking.reference, booking.name, email, booking.date, booking.time, booking.room, new Date(now()).toISOString());
         db.prepare('DELETE FROM bookings WHERE reference = ?').run(booking.reference);
         return {cancelled: booking.reference};
       });
+    },
+    cancellations(from, to, email, limit, offset) {
+      return db.prepare(`
+        SELECT reference, name, email, date, time, room, cancelled_at AS cancelledAt
+        FROM booking_cancellations
+        WHERE ${cancellationFilters}
+        ORDER BY cancelled_at DESC, reference
+        LIMIT ? OFFSET ?
+      `).all(from || '0000-01-01', to || '9999-12-31', email, limit, offset);
+    },
+    countCancellations(from, to, email) {
+      return db.prepare(`
+        SELECT COUNT(*) AS total FROM booking_cancellations WHERE ${cancellationFilters}
+      `).get(from || '0000-01-01', to || '9999-12-31', email).total;
     },
     deleteBooking(reference) {
       if (typeof reference !== 'string' || !/^[0-9A-F]{8}$/.test(reference)) {

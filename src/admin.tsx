@@ -6,10 +6,12 @@ import './admin.css';
 
 type BookingWindow = {date: string; room: string; start: string; end: string};
 type Schedule = {windows: BookingWindow[]; revision: string};
-type Booking = {reference: string; name: string; email: string; phone: string; date: string; time: string; room: string};
+export type AdminPage = 'bookings' | 'setup' | 'cancellations';
+type Booking = {reference: string; name: string; email: string; phone?: string; date: string; time: string; room: string; cancelledAt?: string};
+type BookingStats = {confirmedBookings: number; scheduledSlots: number; bookedScheduledSlots: number};
 type BookingReport = {
   bookings: Booking[];
-  stats: {confirmedBookings: number; scheduledSlots: number; bookedScheduledSlots: number};
+  stats?: BookingStats;
   pagination: {page: number; pageSize: number; total: number};
 };
 const emptyFilters = {from: '', to: '', email: ''};
@@ -18,6 +20,13 @@ const columns = [
   ['date', 'Date'], ['time', 'Cairo time'], ['room', 'Meeting room'],
   ['name', 'Name'], ['email', 'Work email'], ['phone', 'Phone number'], ['reference', 'Reference'],
 ] as const;
+const cancellationColumns = [
+  ['cancelledAt', 'Cancelled at (Cairo)'], ['date', 'Appointment date'], ['time', 'Cairo time'],
+  ['room', 'Meeting room'], ['name', 'Name'], ['email', 'Work email'], ['reference', 'Reference'],
+] as const;
+const cairoDateTime = new Intl.DateTimeFormat('en-GB', {
+  timeZone: 'Africa/Cairo', dateStyle: 'medium', timeStyle: 'short', hourCycle: 'h23',
+});
 
 class ApiError extends Error {
   constructor(message: string, public status: number) {
@@ -36,8 +45,8 @@ async function request<T>(path: string, body?: object): Promise<T> {
   return data;
 }
 
-function BookingStats({report}: {report: BookingReport}) {
-  const {confirmedBookings, scheduledSlots, bookedScheduledSlots} = report.stats;
+function BookingStats({stats}: {stats: BookingStats}) {
+  const {confirmedBookings, scheduledSlots, bookedScheduledSlots} = stats;
   const formatNumber = new Intl.NumberFormat('en');
   const fillRate = new Intl.NumberFormat('en', {style: 'percent', maximumFractionDigits: 1});
 
@@ -62,20 +71,22 @@ function BookingStats({report}: {report: BookingReport}) {
   </dl>;
 }
 
-function BookingPagination({report, busy, onPage}: {
+function BookingPagination({report, busy, onPage, history}: {
   report: BookingReport;
   busy: boolean;
   onPage: (page: number) => void;
+  history: boolean;
 }) {
   const {page, pageSize, total} = report.pagination;
   const first = (page - 1) * pageSize + 1;
   const last = first + report.bookings.length - 1;
   const range = first === last ? first : `${first}–${last}`;
   const pageCount = Math.ceil(total / pageSize);
+  const item = history ? 'cancellation' : 'booking';
 
   return <div className="admin-pagination">
-    <p role="status">Showing {range} of {total} {total === 1 ? 'booking' : 'bookings'}</p>
-    {pageCount > 1 && <nav aria-label="Bookings pagination">
+    <p role="status">Showing {range} of {total} {item}{total === 1 ? '' : 's'}</p>
+    {pageCount > 1 && <nav aria-label={history ? 'Cancellation history pagination' : 'Bookings pagination'}>
       <Button type="button" variant="outline" disabled={busy || page === 1} onClick={() => onPage(page - 1)}>
         <ChevronLeft size={16} aria-hidden="true"/> Previous
       </Button>
@@ -87,7 +98,7 @@ function BookingPagination({report, busy, onPage}: {
   </div>;
 }
 
-export function Admin({page}: {page: 'bookings' | 'setup'}) {
+export function Admin({page}: {page: AdminPage}) {
   const [schedule, setSchedule] = useState<Schedule | null>(null);
   const [report, setReport] = useState<BookingReport | null>(null);
   const [filters, setFilters] = useState(emptyFilters);
@@ -97,12 +108,14 @@ export function Admin({page}: {page: 'bookings' | 'setup'}) {
   const [status, setStatus] = useState('');
   const [error, setError] = useState('');
   const signedIn = schedule !== null || report !== null;
+  const history = page === 'cancellations';
+  const reportColumns = history ? cancellationColumns : columns;
   const hasEmailFilter = new URLSearchParams(reportQuery).has('email');
 
   async function loadReport(query = '', pageNumber = 1) {
     const params = new URLSearchParams(query);
     params.set('page', String(pageNumber));
-    setReport(await request<BookingReport>('bookings?' + params.toString()));
+    setReport(await request<BookingReport>(page + '?' + params.toString()));
   }
 
   async function loadDashboard() {
@@ -210,6 +223,7 @@ export function Admin({page}: {page: 'bookings' | 'setup'}) {
     <main className={signedIn ? 'admin-workspace' : 'admin-signin'} aria-busy={busy}>
       {signedIn && <nav className="admin-nav" aria-label="Booking administration">
         <a href="/admin" aria-current={page === 'bookings' ? 'page' : undefined}>Bookings overview</a>
+        <a href="/admin/cancellations" aria-current={history ? 'page' : undefined}>Cancellation history</a>
         <a href="/admin/setup" aria-current={page === 'setup' ? 'page' : undefined}>Setup</a>
       </nav>}
       {error && <p className="error" role="alert">{error}</p>}
@@ -252,38 +266,48 @@ export function Admin({page}: {page: 'bookings' | 'setup'}) {
         </section>
       </>}
       {report && <>
-        <h1>Bookings overview</h1>
-        <BookingStats report={report}/>
-        {hasEmailFilter && <p className="admin-stats-scope">Statistics cover all bookings for the selected dates.</p>}
+        <h1>{history ? 'Cancellation history' : 'Bookings overview'}</h1>
+        {report.stats && <BookingStats stats={report.stats}/>}
+        {report.stats && hasEmailFilter && <p className="admin-stats-scope">Statistics cover all bookings for the selected dates.</p>}
         <section className="admin-panel">
-          <h2>Bookings</h2>
+          <h2>{history ? 'Employee cancellations' : 'Bookings'}</h2>
           <form className="admin-filters" onSubmit={refreshReport}>
-            <label>From<input type="date" value={filters.from} onChange={event => setFilters({...filters, from: event.target.value})}/></label>
-            <label>To<input type="date" min={filters.from || undefined} value={filters.to}
+            <label>{history ? 'Appointment from' : 'From'}<input type="date" value={filters.from} onChange={event => setFilters({...filters, from: event.target.value})}/></label>
+            <label>{history ? 'Appointment to' : 'To'}<input type="date" min={filters.from || undefined} value={filters.to}
               onChange={event => setFilters({...filters, to: event.target.value})}/></label>
             <label className="admin-email-filter">Work email
               <input type="search" placeholder="Search by email" maxLength={254}
                 value={filters.email} onChange={event => setFilters({...filters, email: event.target.value})}/>
             </label>
             <Button variant="outline" disabled={busy}>Apply filter</Button>
-            <a className="button button-primary" href={'/api/admin/report.csv' + (reportQuery ? '?' + reportQuery : '')}>
+            {!history && <a className="button button-primary" href={'/api/admin/report.csv' + (reportQuery ? '?' + reportQuery : '')}>
               <Download size={16}/> Download CSV
-            </a>
+            </a>}
           </form>
           {report.bookings.length ? <>
-            <div className="admin-table" tabIndex={0} aria-label="Booking results">
+            <div className="admin-table" tabIndex={0} aria-label={history ? 'Cancellation results' : 'Booking results'}>
               <table>
-                <thead><tr>{columns.map(([key, label]) => <th scope="col" key={key}>{label}</th>)}<th scope="col"><span className="sr-only">Actions</span></th></tr></thead>
+                <thead><tr>
+                  {reportColumns.map(([key, label]) => <th scope="col" key={key}>{label}</th>)}
+                  {!history && <th scope="col"><span className="sr-only">Actions</span></th>}
+                </tr></thead>
                 <tbody>{report.bookings.map(booking => <tr key={booking.reference}>
-                  {columns.map(([key]) => <td key={key}>{booking[key]}</td>)}
-                  <td><Button type="button" variant="outline" className="admin-delete" disabled={busy}
+                  {reportColumns.map(([key]) => <td key={key}>
+                    {key === 'cancelledAt' && booking.cancelledAt
+                      ? <time dateTime={booking.cancelledAt}>{cairoDateTime.format(new Date(booking.cancelledAt))}</time>
+                      : booking[key]}
+                  </td>)}
+                  {!history && <td><Button type="button" variant="outline" className="admin-delete" disabled={busy}
                     aria-label={'Delete booking ' + booking.reference} title="Delete booking"
-                    onClick={() => deleteBooking(booking)}><Trash2 size={16}/></Button></td>
+                    onClick={() => deleteBooking(booking)}><Trash2 size={16}/></Button></td>}
                 </tr>)}</tbody>
               </table>
             </div>
-            <BookingPagination report={report} busy={busy} onPage={showPage}/>
-          </> : <p className="admin-empty">No bookings match these filters.</p>}
+            <BookingPagination report={report} busy={busy} onPage={showPage} history={history}/>
+          </> : <p className="admin-empty">
+            {history ? (reportQuery ? 'No cancellations match these filters.' : 'No employee cancellations have been recorded yet.')
+              : 'No bookings match these filters.'}
+          </p>}
         </section>
       </>}
       <SiteFooter className="admin-footer"/>
