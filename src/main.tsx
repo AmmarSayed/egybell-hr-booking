@@ -144,7 +144,7 @@ function App({identity}: {identity?: BookingIdentity}) {
  return <div className="app" data-step={step}><header className="topbar"><a className="wordmark" href={import.meta.env.BASE_URL}>Egybell<span>HR appointments</span></a>
  <div className="header-right">
   {identity?.signedIn?<div className="header-account">{identity.email&&<span className="header-email" title={identity.email}>{identity.email}</span>}<SignOutButton redirectUrl={import.meta.env.BASE_URL}><button type="button" className="header-signout"><LogOut size={16} aria-hidden="true"/>Sign out</button></SignOutButton></div>:<div className="header-note"><span className="live-dot"/>Employee booking portal</div>}
-  {step === 0 && <div className="pie-signature">
+  {(step === 0 || identity?.signedIn) && <div className="pie-signature">
    <img src={pieIcon} alt="" width={38} height={30}/>
    <span>PIE’s treat</span>
   </div>}
