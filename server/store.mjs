@@ -8,6 +8,7 @@ const initialWindows = [
   {date: '2026-11-25', room: 'Meeting Room 14', start: '09:00', end: '17:00'},
 ];
 const sessionMinutes = 15;
+const bookingFilters = 'slots.date BETWEEN ? AND ? AND instr(lower(bookings.email), ?) > 0';
 export const changeWindowHours = 24;
 const changeWindowMs = changeWindowHours * 60 * 60 * 1000;
 const cairoParts = new Intl.DateTimeFormat('en-US', {
@@ -262,19 +263,29 @@ export function openStore(databasePath, {now = () => Date.now()} = {}) {
       if (!changes) throw new RequestError(404, 'That booking was already deleted. Refresh the list.');
       return {deleted: reference};
     },
-    bookings(from, to) {
+    bookings(from, to, email = '', limit = -1, offset = 0) {
       return db.prepare(`
         SELECT reference, name, email, phone, date, time, bookings.room AS room, created_at AS createdAt
         FROM bookings JOIN slots ON slots.id = bookings.slot_id
-        WHERE date >= ? AND date <= ?
-        ORDER BY date, time, room COLLATE NOCASE
-      `).all(from || '0000-01-01', to || '9999-12-31');
+        WHERE ${bookingFilters}
+        ORDER BY date, time, room COLLATE NOCASE, reference
+        LIMIT ? OFFSET ?
+      `).all(from || '0000-01-01', to || '9999-12-31', email, limit, offset);
+    },
+    countBookings(from, to, email) {
+      return db.prepare(`
+        SELECT COUNT(*) AS total
+        FROM bookings JOIN slots ON slots.id = bookings.slot_id
+        WHERE ${bookingFilters}
+      `).get(from || '0000-01-01', to || '9999-12-31', email).total;
     },
     bookingStats(from, to) {
       return db.prepare(`
-        SELECT COUNT(*) AS scheduledSlots, COUNT(bookings.slot_id) AS bookedScheduledSlots
+        SELECT COUNT(bookings.slot_id) AS confirmedBookings,
+               COUNT(CASE WHEN slots.active = 1 THEN 1 END) AS scheduledSlots,
+               COUNT(CASE WHEN slots.active = 1 THEN bookings.slot_id END) AS bookedScheduledSlots
         FROM slots LEFT JOIN bookings ON bookings.slot_id = slots.id
-        WHERE slots.active = 1 AND slots.date BETWEEN ? AND ?
+        WHERE slots.date BETWEEN ? AND ?
       `).get(from || '0000-01-01', to || '9999-12-31');
     },
   };

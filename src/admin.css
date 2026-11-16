@@ -65,6 +65,33 @@
 .admin-actions{justify-content:space-between}
 .admin-filters{margin-bottom:18px}
 .admin-filters .button-primary{margin-left:auto}
+.admin-filters .admin-email-filter {
+  flex: 1 1 200px;
+  min-width: 0;
+  max-width: 300px;
+}
+.admin-stats-scope {
+  margin: -8px 0 16px;
+  color: #475572;
+  font-size: 12px;
+}
+.admin-pagination,
+.admin-pagination nav {
+  display: flex;
+  align-items: center;
+  gap: 8px 12px;
+  flex-wrap: wrap;
+}
+.admin-pagination {
+  justify-content: space-between;
+  margin-top: 16px;
+  color: #475572;
+  font-size: 13px;
+}
+.admin-pagination .button {
+  gap: 4px;
+  padding-inline: 10px;
+}
 .admin-table {
   position: relative;
   overflow-x: auto;
@@ -86,6 +113,10 @@
   .admin-filters .button-primary{margin-left:0}
 }
 @media (max-width: 520px) {
+  .admin-filters .admin-email-filter {
+    flex-basis: 100%;
+    max-width: none;
+  }
   .admin-stats {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }

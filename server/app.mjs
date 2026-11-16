@@ -5,6 +5,7 @@ import {isDate, openStore, RequestError} from './store.mjs';
 
 const sessionSeconds = 8 * 60 * 60;
 const cookieName = 'egybell_hr';
+const bookingsPerPage = 25;
 const reportColumns = [
   ['Booking reference', 'reference'], ['Full name', 'name'], ['Work email', 'email'], ['Phone number', 'phone'],
   ['Appointment date', 'date'], ['Cairo time', 'time'], ['Meeting room', 'room'],
@@ -104,22 +105,34 @@ export function createBookingApp({databasePath, adminPassword, secure = false, s
     res.json(store.saveSchedule(req.body.windows, req.body.revision));
   });
 
-  function reportDates(req) {
-    const {from, to} = req.query;
+  function reportFilters(req) {
+    const {from, to, email = ''} = req.query;
     if ((from !== undefined && !isDate(from)) || (to !== undefined && !isDate(to)) || (from && to && from > to)) {
       throw new RequestError(400, 'Enter a valid date range.');
     }
-    return {from, to};
+    if (typeof email !== 'string' || email.length > 254) {
+      throw new RequestError(400, 'Enter a valid email search.');
+    }
+    return {from, to, email: email.trim().toLowerCase()};
   }
 
   admin.get('/bookings', (req, res) => {
-    const {from, to} = reportDates(req);
-    res.json({bookings: store.bookings(from, to), stats: store.bookingStats(from, to)});
+    const {from, to, email} = reportFilters(req);
+    const {page: rawPage = '1'} = req.query;
+    if (typeof rawPage !== 'string' || !/^[1-9][0-9]*$/.test(rawPage) || !Number.isSafeInteger(Number(rawPage))) {
+      throw new RequestError(400, 'Enter a valid page number.');
+    }
+    const stats = store.bookingStats(from, to);
+    const total = email ? store.countBookings(from, to, email) : stats.confirmedBookings;
+    const lastPage = Math.max(1, Math.ceil(total / bookingsPerPage));
+    const page = Math.min(Number(rawPage), lastPage);
+    const bookings = store.bookings(from, to, email, bookingsPerPage, (page - 1) * bookingsPerPage);
+    res.json({bookings, stats, pagination: {page, pageSize: bookingsPerPage, total}});
   });
   admin.post('/bookings/delete', (req, res) => res.json(store.deleteBooking(req.body.reference)));
   admin.get('/report.csv', (req, res) => {
-    const {from, to} = reportDates(req);
-    const bookings = store.bookings(from, to);
+    const {from, to, email} = reportFilters(req);
+    const bookings = store.bookings(from, to, email);
     const rows = [reportColumns.map(([label]) => label), ...bookings.map(row => reportColumns.map(([, key]) => row[key]))];
     const csv = '\uFEFF' + rows.map(row => row.map(csvCell).join(',')).join('\r\n') + '\r\n';
     res.set('Content-Disposition', 'attachment; filename="egybell-bookings.csv"').type('text/csv').send(csv);

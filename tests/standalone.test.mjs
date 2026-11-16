@@ -75,12 +75,14 @@ test('booking and HR management share a durable database', async t => {
   const firstDay = '?from=2026-11-24&to=2026-11-24';
   const bookedReport = await report(firstDay);
   assert.deepEqual(bookedReport.bookings.map(row => row.reference), [receipt.id]);
-  assert.deepEqual(bookedReport.stats, {scheduledSlots: 64, bookedScheduledSlots: 1});
+  assert.deepEqual(bookedReport.stats, {confirmedBookings: 1, scheduledSlots: 64, bookedScheduledSlots: 1});
   assert.deepEqual(await report('?from=2026-11-25&to=2026-11-25'), {
-    bookings: [], stats: {scheduledSlots: 64, bookedScheduledSlots: 0},
+    bookings: [], stats: {confirmedBookings: 0, scheduledSlots: 64, bookedScheduledSlots: 0},
+    pagination: {page: 1, pageSize: 25, total: 0},
   });
   assert.deepEqual(await report('?from=2026-11-27'), {
-    bookings: [], stats: {scheduledSlots: 0, bookedScheduledSlots: 0},
+    bookings: [], stats: {confirmedBookings: 0, scheduledSlots: 0, bookedScheduledSlots: 0},
+    pagination: {page: 1, pageSize: 25, total: 0},
   });
 
   const {windows, revision} = await (await request('/api/admin/schedule', undefined, cookie)).json();
@@ -111,7 +113,7 @@ test('booking and HR management share a durable database', async t => {
   assert.ok(archivedReport.includes(receipt.id));
   const afterClosingReport = await report(firstDay);
   assert.deepEqual(afterClosingReport.bookings.map(row => row.reference), [receipt.id]);
-  assert.deepEqual(afterClosingReport.stats, {scheduledSlots: 32, bookedScheduledSlots: 0});
+  assert.deepEqual(afterClosingReport.stats, {confirmedBookings: 1, scheduledSlots: 32, bookedScheduledSlots: 0});
 
   await instance.stop();
   instance = await start();
@@ -125,7 +127,8 @@ test('booking and HR management share a durable database', async t => {
   assert.equal((await remove(receipt.id)).status, 200);
   assert.equal((await remove(receipt.id)).status, 404);
   assert.deepEqual(await report(firstDay, freshCookie), {
-    bookings: [], stats: {scheduledSlots: 32, bookedScheduledSlots: 0},
+    bookings: [], stats: {confirmedBookings: 0, scheduledSlots: 32, bookedScheduledSlots: 0},
+    pagination: {page: 1, pageSize: 25, total: 0},
   });
   assert.ok(!(await (await request('/api/admin/report.csv', undefined, freshCookie)).text()).includes(receipt.id));
   const afterDelete = await (await publicApi({action: 'availability', email: winner})).json();
@@ -134,6 +137,33 @@ test('booking and HR management share a durable database', async t => {
   const rebooked = await publicApi({action: 'book', email: winner, name: 'Mona Hassan', phone: '+201000000001', slotId: openSlot.id});
   assert.equal(rebooked.status, 200);
   assert.deepEqual((await (await publicApi({action: 'schedule'})).json()).dates, ['2026-11-24', '2026-11-25', '2026-11-26']);
+
+  const nextDaySlots = afterDelete.slots.filter(slot => slot.date === '2026-11-25').slice(0, 26);
+  for (const [index, slot] of nextDaySlots.entries()) {
+    const response = await publicApi({...booking, slotId: slot.id, email: 'sample.' + index + '@afreximbank.com'});
+    assert.equal(response.status, 200);
+  }
+  const search = '?email=%20SAMPLE.%20';
+  const firstPage = await report(search, freshCookie);
+  const secondPage = await report(search + '&page=2', freshCookie);
+  assert.deepEqual(firstPage.pagination, {page: 1, pageSize: 25, total: 26});
+  assert.deepEqual(secondPage.pagination, {page: 2, pageSize: 25, total: 26});
+  const results = [...firstPage.bookings, ...secondPage.bookings];
+  assert.equal(results.length, 26);
+  assert.equal(new Set(results.map(row => row.reference)).size, 26);
+  assert.ok(results.every(row => row.email.startsWith('sample.')));
+  assert.equal(secondPage.stats.confirmedBookings, 27);
+  assert.equal((await report(firstDay + '&email=sample.', freshCookie)).pagination.total, 0);
+  assert.equal((await report('?email=%25', freshCookie)).pagination.total, 0);
+  assert.equal((await request('/api/admin/bookings?page=0', undefined, freshCookie)).status, 400);
+  assert.equal((await request('/api/admin/bookings?email=a&email=b', undefined, freshCookie)).status, 400);
+
+  const matchingCsv = await (await request('/api/admin/report.csv' + search, undefined, freshCookie)).text();
+  assert.ok(results.every(row => matchingCsv.includes(row.reference)));
+  assert.ok(!matchingCsv.includes(winner));
+  assert.equal((await remove(secondPage.bookings[0].reference)).status, 200);
+  const afterLastPageDeletion = await report(search + '&page=2', freshCookie);
+  assert.deepEqual(afterLastPageDeletion.pagination, {page: 1, pageSize: 25, total: 25});
 });
 
 test('appointments must be booked at least 24 hours ahead in Cairo time', () => {
